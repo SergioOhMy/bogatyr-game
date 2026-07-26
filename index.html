@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Битва Богатырей</title>
+    <!-- Подключаем стили -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <h1>Битва Богатырей</h1>
+
+    <div id="selection-screen" class="screen active-screen">
+        <h2>Собери свою дружину (Выберите 3-х героев)</h2>
+        <div class="grid" id="roster"></div>
+        <button id="start-btn" disabled>В бой!</button>
+    </div>
+
+    <div id="combat-screen" class="screen">
+        <div>
+            <h2>Осталось времени на ход: <span id="timer-display">60</span> сек</h2>
+            <div id="turn-indicator" style="font-size: 20px; font-weight: bold; color: #f1c40f;">Ход: ...</div>
+        </div>
+
+        <div class="battlefield">
+            <div class="team" id="player-team"></div>
+            <div class="team" id="enemy-team"></div>
+        </div>
+
+        <div class="ui-panel" id="action-panel">
+            <h3>Кликните навык, и сразу нажимайте кнопку (или смените цель)</h3>
+            <div class="skills" id="skills-container"></div>
+            <button id="execute-btn" disabled>Ожидание...</button>
+        </div>
+
+        <div id="combat-log">Бой начинается...</div>
+    </div>
+
+    <!-- Подключаем главный скрипт как модуль -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
