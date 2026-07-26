@@ -3,30 +3,26 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Битва Богатырей</title>
-    <!-- Подключаем стили -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <!-- ОБЩИЙ КРАСИВЫЙ ЗАГОЛОВОК ДЛЯ ВСЕХ ФОРМ -->
     <h1 class="game-title">Битва Богатырей</h1>
 
     <!-- 1. ЭКРАН ВЫБОРА И СОЗДАНИЯ ПРОФИЛЯ -->
     <div id="screen-auth" class="screen" style="display: none;">
-        
-        <!-- Блок создания нового профиля -->
+
         <div id="auth-create">
             <h2>Создание профиля</h2>
             <input type="text" id="input-name" placeholder="Введите ваше имя">
             <p>Выберите ровно 3 стартовых героев:</p>
             <div id="auth-heroes-list" class="heroes-grid"></div>
+            <div id="auth-hero-details" class="hero-details-panel"></div>
             <button id="btn-create" class="primary-btn" disabled>Создать профиль</button>
             <br>
             <button id="btn-back-to-profiles" class="danger-btn" style="display: none; margin-top: 15px;">Назад к выбору</button>
         </div>
 
-        <!-- Блок загрузки существующих профилей -->
         <div id="auth-load" style="display: none;">
             <h2>Выберите профиль:</h2>
             <div id="profiles-list" class="heroes-grid"></div>
@@ -38,39 +34,55 @@
         </div>
     </div>
 
-    <!-- 2. ГЛАВНОЕ МЕНЮ И МАГАЗИН (Как на скриншоте) -->
+    <!-- 2. ГЛАВНОЕ МЕНЮ И МАГАЗИН -->
     <div id="screen-menu" class="screen" style="display: none;">
-        
-        <!-- Новый текст с призывом -->
+
         <h2 class="squad-title">Собери свою дружину (Выберите 3-х героев)</h2>
+        <p id="ui-stats" class="stats-line"></p>
 
-        <!-- Сначала идет Ваша дружина -->
         <div id="ui-my-heroes" class="heroes-grid"></div>
+        <div id="menu-hero-details" class="hero-details-panel"></div>
 
-        <!-- Кнопка В БОЙ теперь прямо под дружиной, как вы хотели -->
+        <div class="difficulty-picker">
+            <span>Сложность бота:</span>
+            <label><input type="radio" name="difficulty" value="easy"> Лёгкая</label>
+            <label><input type="radio" name="difficulty" value="normal"> Средняя</label>
+            <label><input type="radio" name="difficulty" value="hard"> Сложная</label>
+        </div>
+
         <div class="menu-actions" style="margin-top: 20px; margin-bottom: 40px;">
             <button id="btn-battle" class="primary-btn" disabled>В бой!</button>
         </div>
 
         <hr style="border-color: #7f8c8d; margin-bottom: 20px;">
 
-        <!-- Магазин и баланс вынесены ниже -->
         <h3>Магазин Героев (Баланс: <b id="ui-coins" style="color: #f1c40f;">0</b> 💰)</h3>
         <div id="ui-shop-heroes" class="heroes-grid"></div>
-        
+
         <button id="btn-logout" class="danger-btn" style="margin-top: 30px;">Сменить профиль</button>
+    </div>
+
+    <!-- 2.5. ЭКРАН ВЫБОРА АРЕНЫ -->
+    <div id="screen-arena" class="screen" style="display: none;">
+        <h2 class="squad-title">Выберите арену</h2>
+        <div id="arena-list" class="heroes-grid"></div>
+        <div class="menu-actions" style="margin-top: 20px;">
+            <button id="btn-start-battle" class="primary-btn">Начать бой!</button>
+            <br>
+            <button id="btn-arena-back" class="danger-btn" style="margin-top: 15px;">Назад в дружину</button>
+        </div>
     </div>
 
     <!-- 3. ЭКРАН БОЯ -->
     <div id="screen-battle" class="screen" style="display: none;">
         <h2 id="turn-indicator">Ходит: ...</h2>
-        <p>Время на ход: <span id="timer-display">60</span> сек</p>
-        
+        <p><span id="arena-label"></span> · Время на ход: <span id="timer-display">60</span> сек</p>
+
         <div class="battlefield">
             <div id="player-team" class="team"></div>
             <div id="enemy-team" class="team"></div>
         </div>
-        
+
         <div id="skills-container" class="skills"></div>
         <button id="execute-btn" disabled>Атаковать</button>
         <div id="combat-log"></div>

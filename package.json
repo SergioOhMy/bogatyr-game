@@ -1,0 +1,15 @@
+{
+  "name": "bogatyr-game",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Битва Богатырей — браузерная пошаговая стратегия",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "balance": "node scripts/balance-sim.js"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
+}

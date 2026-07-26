@@ -58,9 +58,11 @@ body {
 /* Настройки для экранов телефонов (шириной меньше 768px) */
 @media (max-width: 768px) {
   /* Делаем так, чтобы команды богатырей стояли друг под другом, а не слипались */
-  .battle-field {
+  .battlefield {
     flex-direction: column;
+    gap: 20px;
   }
+  .team { width: 100%; }
   
   /* Увеличиваем кнопки, чтобы по ним легко попадать пальцем */
   button {
@@ -123,3 +125,218 @@ body {
     text-shadow: 1px 1px 3px #000;
     margin-bottom: 20px;
 }
+/* =========================================================================
+   ПАНЕЛЬ ХАРАКТЕРИСТИК ГЕРОЯ
+   Показывается при клике на карточку героя (создание профиля, магазин,
+   дружина), чтобы игрок видел HP/урон/скорость/пассивку перед выбором.
+   ========================================================================= */
+.hero-details-panel { margin: 15px auto 20px; max-width: 600px; min-height: 40px; }
+.details-placeholder { color: #95a5a6; font-style: italic; font-size: 14px; }
+
+.hero-details-card {
+    display: flex; align-items: center; gap: 15px;
+    background: #2c3e50; border: 2px solid #f1c40f;
+    border-radius: 10px; padding: 12px 16px; text-align: left;
+    animation: details-fade-in 0.25s ease-out;
+}
+@keyframes details-fade-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.details-avatar {
+    width: 70px; height: 70px; flex-shrink: 0;
+    background-color: #1a252f; background-size: cover; background-position: center;
+    border-radius: 8px; border: 2px solid #7f8c8d;
+}
+.details-info { flex-grow: 1; min-width: 0; }
+.details-name { font-size: 18px; font-weight: bold; margin-bottom: 6px; }
+.details-race {
+    font-size: 11px; font-weight: normal; color: #1a252f; background: #f1c40f;
+    padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle;
+}
+.details-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 4px 15px; font-size: 13px; margin-bottom: 6px;
+}
+.detail-stat { color: #ecf0f1; }
+.detail-passive { font-size: 12px; color: #bdc3c7; margin-bottom: 4px; }
+.detail-ultimate { font-size: 12px; color: #f1c40f; }
+
+/* =========================================================================
+   АРЕНЫ
+   ========================================================================= */
+.arena-card { width: 220px; text-align: center; padding: 16px; }
+.arena-icon { font-size: 40px; margin-bottom: 8px; }
+.arena-desc { font-size: 12px; color: #bdc3c7; margin-top: 8px; line-height: 1.4; }
+
+/* =========================================================================
+   СЛОЖНОСТЬ БОТА И СТАТИСТИКА
+   ========================================================================= */
+.difficulty-picker {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: center;
+    background: #34495e; border-radius: 8px; padding: 10px 16px; margin: 15px auto; max-width: 500px;
+    font-size: 14px;
+}
+.difficulty-picker label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.stats-line { color: #f1c40f; font-size: 14px; margin-bottom: 10px; }
+
+/* =========================================================================
+   УЛЬТИМАТИВНЫЕ УМЕНИЯ
+   ========================================================================= */
+.ultimate-btn { background: linear-gradient(135deg, #8e44ad, #2c3e50); border: 2px solid #f1c40f; }
+.ultimate-btn:hover:not(:disabled) { background: linear-gradient(135deg, #9b59b6, #34495e); }
+.ult-tag {
+    font-size: 9px; background: #f1c40f; color: #1a252f; padding: 1px 4px;
+    border-radius: 3px; font-weight: bold; vertical-align: middle;
+}
+
+/* =========================================================================
+   АНИМАЦИИ БОЯ
+   Каждая пассивка (класс героя) получает свою анимацию срабатывания, плюс
+   универсальные "тряска при ударе" и "смерть", плюс фирменный всплеск
+   частицы конкретного героя для его личного ультимативного умения.
+   ========================================================================= */
+
+/* Общий удар */
+@keyframes hit-shake-kf {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-8px); }
+    40%, 60% { transform: translateX(8px); }
+}
+.hit-shake { animation: hit-shake-kf 0.4s ease-in-out; }
+
+/* Берсерк: крит - более сильная тряска + красная вспышка */
+@keyframes crit-shake-kf {
+    10%, 90% { transform: translateX(-4px) scale(1.02); }
+    20%, 80% { transform: translateX(8px) scale(1.04); }
+    30%, 50%, 70% { transform: translateX(-14px) scale(1.06); }
+    40%, 60% { transform: translateX(14px) scale(1.04); }
+}
+.fx-crit { animation: crit-shake-kf 0.65s ease-in-out; box-shadow: 0 0 25px 5px rgba(231, 76, 60, 0.8) !important; }
+
+/* Ловкость: уворот - лёгкий "рывок" в сторону + затухание */
+@keyframes dodge-kf {
+    0% { transform: translateX(0); opacity: 1; }
+    30% { transform: translateX(-18px); opacity: 0.6; }
+    60% { transform: translateX(14px); opacity: 0.85; }
+    100% { transform: translateX(0); opacity: 1; }
+}
+.fx-dodge { animation: dodge-kf 0.45s ease-out; }
+
+/* Тяжеловес: блок - короткая "остановка удара", синяя вспышка щита */
+@keyframes block-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(52, 152, 219, 0); }
+    40% { box-shadow: 0 0 20px 6px rgba(52, 152, 219, 0.9); transform: scale(0.97); }
+}
+.fx-block { animation: block-kf 0.45s ease-out; }
+
+/* Живучесть: регенерация - зелёное пульсирующее свечение */
+@keyframes regen-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(46, 204, 113, 0); }
+    50% { box-shadow: 0 0 22px 6px rgba(46, 204, 113, 0.85); }
+}
+.fx-regen { animation: regen-kf 0.6s ease-in-out; }
+
+/* Знахарь: крит. исцеление - белое/золотое пульсирующее свечение */
+@keyframes critheal-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(241, 196, 15, 0); }
+    50% { box-shadow: 0 0 26px 8px rgba(241, 196, 15, 0.9); transform: scale(1.03); }
+}
+.fx-critheal { animation: critheal-kf 0.5s ease-in-out; }
+
+/* Обычное лечение - мягкое зелёное свечение (без пульса крита) */
+@keyframes heal-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(46, 204, 113, 0); }
+    50% { box-shadow: 0 0 14px 3px rgba(46, 204, 113, 0.6); }
+}
+.fx-heal { animation: heal-kf 0.5s ease-in-out; }
+
+/* Удача: двойной ход - золотые искры вокруг атакующего */
+@keyframes doublecast-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(241, 196, 15, 0); }
+    50% { box-shadow: 0 0 20px 5px rgba(241, 196, 15, 0.85); }
+}
+.fx-doublecast { animation: doublecast-kf 0.5s ease-in-out; }
+
+/* Смерть - плавное "оседание" перед переходом в dead-hero */
+@keyframes death-kf {
+    0% { transform: scale(1) rotate(0); opacity: 1; }
+    100% { transform: scale(0.9) rotate(-8deg); opacity: 0.4; filter: grayscale(100%); }
+}
+.fx-death { animation: death-kf 0.6s ease-in forwards; }
+
+/* Каст ультимативного умения атакующим - фирменное свечение его цвета */
+@keyframes ultimate-cast-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(241, 196, 15, 0); transform: scale(1); }
+    50% { box-shadow: 0 0 30px 8px var(--ult-glow, rgba(241, 196, 15, 0.9)); transform: scale(1.06); }
+}
+.fx-ultimate-cast { animation: ultimate-cast-kf 0.7s ease-in-out; }
+
+/* Плавающие цифры урона/лечения над персонажем */
+@keyframes float-up-kf {
+    0%   { transform: translate(-50%, 0); opacity: 1; }
+    100% { transform: translate(-50%, -55px); opacity: 0; }
+}
+.floating-text {
+    position: absolute; left: 50%; top: 10px;
+    transform: translate(-50%, 0);
+    font-weight: bold; font-size: 20px; pointer-events: none;
+    animation: float-up-kf 1.1s ease-out forwards;
+    text-shadow: 1px 1px 2px #000, 0 0 6px rgba(0,0,0,0.7);
+    z-index: 20; white-space: nowrap;
+}
+.floating-dmg { color: #e74c3c; }
+.floating-crit { color: #ff3b30; font-size: 26px; }
+.floating-heal { color: #2ecc71; }
+.floating-critheal { color: #f1c40f; font-size: 24px; }
+.floating-miss, .floating-dodge, .floating-block { color: #bdc3c7; font-size: 16px; }
+.floating-regen { color: #2ecc71; font-size: 16px; }
+
+/* Всплеск фирменной частицы ультимативного умения (эмодзи героя) */
+@keyframes vfx-burst-kf {
+    0%   { transform: translate(-50%, 0) scale(0.4); opacity: 0; }
+    30%  { transform: translate(-50%, -20px) scale(1.4); opacity: 1; }
+    100% { transform: translate(-50%, -70px) scale(1.1); opacity: 0; }
+}
+.vfx-burst {
+    position: absolute; left: 50%; top: 20%;
+    font-size: 34px; pointer-events: none;
+    animation: vfx-burst-kf 0.9s ease-out forwards;
+    filter: drop-shadow(0 0 8px var(--vfx-color, #f1c40f));
+    z-index: 21;
+}
+
+/* =========================================================================
+   МОБИЛЬНАЯ АДАПТИВНОСТЬ
+   ========================================================================= */
+@media (max-width: 768px) {
+    .game-title { font-size: 28px; }
+    .squad-title { font-size: 18px; }
+
+    .heroes-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+    .card { width: auto; padding: 8px; }
+    .avatar { width: 72px; height: 72px; }
+
+    .hero-details-card { flex-direction: column; text-align: center; }
+    .details-grid { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
+
+    .skills { gap: 8px; }
+    .skill-btn { min-width: 130px; font-size: 13px; padding: 8px; }
+
+    .fighter { padding: 8px; }
+    .fighter .avatar { width: 48px; height: 48px; margin-right: 10px; }
+
+    .arena-card { width: 100%; max-width: 320px; }
+
+    .difficulty-picker { flex-direction: column; gap: 8px; }
+
+    #execute-btn { width: 100%; max-width: 320px; }
+
+    .floating-text { font-size: 16px; }
+    .floating-crit { font-size: 20px; }
+}
+
+/* Гарантируем минимальный размер тач-таргетов на всех экранах, не только <768px */
+.card, .skill-btn, button { min-height: 44px; }
