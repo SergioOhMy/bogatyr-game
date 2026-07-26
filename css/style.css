@@ -46,3 +46,27 @@ button:disabled { background: #7f8c8d; cursor: not-allowed; }
 #timer-display { font-size: 24px; font-weight: bold; color: #e74c3c; }
 #combat-log { margin-top: 20px; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; max-height: 150px; overflow-y: auto; text-align: left; }
 .death-log { color: #e74c3c; font-weight: bold; }
+/* Отключаем выделение текста и синие вспышки при клике на телефоне */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Настройки для экранов телефонов (шириной меньше 768px) */
+@media (max-width: 768px) {
+  /* Делаем так, чтобы команды богатырей стояли друг под другом, а не слипались */
+  .battle-field {
+    flex-direction: column;
+  }
+  
+  /* Увеличиваем кнопки, чтобы по ним легко попадать пальцем */
+  button {
+    padding: 12px 20px;
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
