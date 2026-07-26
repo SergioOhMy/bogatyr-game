@@ -1,5 +1,4 @@
 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #2c3e50; color: white; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-h1 { color: #f1c40f; text-shadow: 2px 2px 4px #000; }
 .screen { display: none; width: 100%; max-width: 900px; text-align: center; }
 .active-screen { display: block; }
 
@@ -69,4 +68,58 @@ body {
     font-size: 16px;
     min-height: 44px;
   }
+}
+.screen {
+    padding: 20px;
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.heroes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.hero-card {
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.hero-card.locked {
+    filter: grayscale(80%);
+}
+
+.danger-btn {
+    background-color: #f44336;
+    color: white;
+}
+
+.primary-btn {
+    background-color: #2196F3;
+    color: white;
+    font-size: 18px;
+    padding: 15px 30px;
+}
+/* --- СТИЛИ ДЛЯ ЗАГОЛОВКОВ --- */
+.game-title {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    color: #ffcc00; /* Золотой цвет */
+    text-shadow: 2px 2px 0px #000, 4px 4px 8px rgba(0, 0, 0, 0.7);
+    font-size: 42px;
+    letter-spacing: 2px;
+    margin: 10px 0 20px 0;
+    text-transform: uppercase;
+}
+
+.squad-title {
+    font-size: 24px;
+    color: #ffffff;
+    text-shadow: 1px 1px 3px #000;
+    margin-bottom: 20px;
 }

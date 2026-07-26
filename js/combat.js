@@ -1,11 +1,11 @@
+import { winBattle } from './state.js';
+import { showMenu } from './main.js';
 import { state } from './state.js';
 import { initHeroStats, baseCharacters } from './characters.js';
 import { log, renderBattlefield, renderSkills, checkActionState } from './ui.js';
 
 export function startCombat() {
-    document.getElementById('selection-screen').classList.remove('active-screen');
-    document.getElementById('combat-screen').classList.add('active-screen');
-
+  
     let remaining = baseCharacters.filter(c => !state.playerTeam.some(p => p.id === c.id));
     let shuffledBots = remaining.sort(() => 0.5 - Math.random()).slice(0, 3);
     
@@ -100,25 +100,69 @@ export function startTurn() {
     if (activeChar.isBot) setTimeout(botLogic, 1500); 
 }
 
-export function executeAction(attacker, target, skill) {
-    clearInterval(state.timerInterval); 
-    document.getElementById('execute-btn').disabled = true; 
-    
-    attacker.currentCooldowns[skill.name] = skill.cooldown;
+export function executeAction(attacker, target, skill, isDoubleCast = false) {
+    if (!isDoubleCast) {
+        clearInterval(state.timerInterval); 
+        document.getElementById('execute-btn').disabled = true; 
+        attacker.currentCooldowns[skill.name] = skill.cooldown;
+    }
 
-    if (skill.type === 'attack') {
-        let actualDmg = Math.round(skill.dmg * attacker.dmgMult * target.incDmgMult);
-        target.hp -= actualDmg;
-        log(`⚔️ <b>${attacker.name}</b> применяет <i>${skill.icon} ${skill.name}</i> на <b>${target.name}</b> и наносит ${actualDmg} урона!`);
-        
-        if (target.hp <= 0) {
-            target.hp = 0;
-            log(`<span class="death-log">💀 ${target.name} погибает!</span>`);
+    // 1. Проверка уклонения (Только от атак)
+    if (skill.type === 'attack' && target.passiveTrigger === 'dodge' && Math.random() < target.passiveChance) {
+        log(`💨 <b>${target.name}</b> ловко уворачивается от атаки <b>${attacker.name}</b>!`);
+    }
+    // 2. Проверка блока Тяжеловеса
+    else if (skill.type === 'attack' && target.passiveTrigger === 'block' && Math.random() < target.passiveChance) {
+        log(`🛡️ <b>${target.name}</b> ставит непробиваемый блок! Атака <b>${attacker.name}</b> поглощена.`);
+    }
+    else {
+        // Если атака/хил прошли успешно
+        if (skill.type === 'attack') {
+            let actualDmg = Math.round(skill.dmg * attacker.dmgMult * target.incDmgMult);
+            let isCrit = (attacker.passiveTrigger === 'crit' && Math.random() < attacker.passiveChance);
+
+            if (isCrit) {
+                actualDmg = Math.round(actualDmg * 1.5);
+                log(`💥 КРИТИЧЕСКИЙ УДАР! <b>${attacker.name}</b> применяет <i>${skill.icon} ${skill.name}</i> и сносит <b>${target.name}</b> ${actualDmg} ХП!`);
+            } else {
+                log(`⚔️ <b>${attacker.name}</b> применяет <i>${skill.icon} ${skill.name}</i> на <b>${target.name}</b> и наносит ${actualDmg} урона!`);
+            }
+
+            target.hp -= actualDmg;
+
+            // 3. Регенерация Живучести при получении урона
+            if (target.passiveTrigger === 'regen' && target.hp > 0 && Math.random() < target.passiveChance) {
+                let heal = Math.round(target.maxHp * 0.15);
+                target.hp = Math.min(target.maxHp, target.hp + heal);
+                log(`❤️ Живучесть спасает! <b>${target.name}</b> регенерирует ${heal} ХП в ответ на удар!`);
+            }
+
+            if (target.hp <= 0) {
+                target.hp = 0;
+                log(`<span class="death-log">💀 ${target.name} погибает!</span>`);
+            }
+        } 
+        else if (skill.type === 'heal') {
+            let actualHeal = Math.round(Math.abs(skill.dmg) * attacker.healMult);
+            let isCritHeal = (attacker.passiveTrigger === 'crit_heal' && Math.random() < attacker.passiveChance);
+
+            if (isCritHeal) {
+                actualHeal = Math.round(actualHeal * 1.5);
+                log(`🌟 ЧУДО! <b>${attacker.name}</b> критически исцеляет <b>${target.name}</b> на ${actualHeal} ХП!`);
+            } else {
+                log(`💚 <b>${attacker.name}</b> применяет <i>${skill.icon} ${skill.name}</i> на <b>${target.name}</b> и восстанавливает ${actualHeal} ХП!`);
+            }
+            target.hp = Math.min(target.maxHp, target.hp + actualHeal);
         }
-    } else if (skill.type === 'heal') {
-        let actualHeal = Math.round(Math.abs(skill.dmg) * attacker.healMult);
-        target.hp = Math.min(target.maxHp, target.hp + actualHeal);
-        log(`💚 <b>${attacker.name}</b> применяет <i>${skill.icon} ${skill.name}</i> на <b>${target.name}</b> и восстанавливает ${actualHeal} HP!`);
+    }
+
+    // 4. Двойной ход Удачи
+    if (!isDoubleCast && attacker.passiveTrigger === 'double_cast' && attacker.hp > 0 && target.hp > 0 && Math.random() < attacker.passiveChance) {
+        log(`🍀 НЕВЕРОЯТНАЯ УДАЧА! <b>${attacker.name}</b> атакует второй раз подряд!`);
+        setTimeout(() => {
+            executeAction(attacker, target, skill, true);
+        }, 1000);
+        return; // Ждем окончания второго каста
     }
 
     renderBattlefield(onTargetSelect);
@@ -163,9 +207,16 @@ function checkWinCondition() {
     let aliveBots = state.enemyTeam.filter(e => e.hp > 0).length;
 
     if (alivePlayers === 0) {
-        setTimeout(() => { alert('Поражение! Вражеские богатыри оказались сильнее.'); location.reload(); }, 600);
+        setTimeout(() => { 
+            alert('Поражение! Вражеские богатыри оказались сильнее.'); 
+            showMenu(); // Просто возвращаем в меню (без монет)
+        }, 600);
     } else if (aliveBots === 0) {
-        setTimeout(() => { alert('Победа! Слава вашей дружине!'); location.reload(); }, 600);
+        setTimeout(() => { 
+            alert('Победа! Слава вашей дружине! Вы получили 50 монет 💰'); 
+            winBattle(); // Начисляем монеты в профиль
+            showMenu();  // Возвращаем в меню и магазин
+        }, 600);
     } else {
         nextTurn(); 
     }
