@@ -1,13 +1,14 @@
 import {
     state, currentProfile, allProfiles, loadProfile, createProfile,
-    deleteProfile, buyHero, selectProfile, setDifficulty
+    deleteProfile, buyHero, selectProfile, setDifficulty, redeemPromoCode
 } from './state.js';
 import { baseCharacters, passivesSystem } from './characters.js';
 import { arenas } from './arenas.js';
+import { promoCodes, getSpecialCharacterById } from './promocodes.js';
 import { startCombat, executeAction } from './combat.js';
 import { renderHeroDetails } from './ui.js';
 
-let screenAuth, screenMenu, screenBattle, screenArena;
+let screenAuth, screenMenu, screenBattle, screenArena, screenShop;
 let selectedForStart = [];
 let selectedProfileIndex = null; // Какой профиль выделен в меню загрузки
 let selectedArenaId = 'field';
@@ -17,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     screenMenu = document.getElementById('screen-menu');
     screenBattle = document.getElementById('screen-battle');
     screenArena = document.getElementById('screen-arena');
+    screenShop = document.getElementById('screen-shop');
 
     initApp();
 
@@ -63,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // "В бой" теперь ведёт на экран выбора арены, а не сразу в бой
+    // "В бой" ведёт на экран выбора арены
     document.getElementById('btn-battle').onclick = () => {
         if (state.playerTeam.length !== 3) {
             alert('Сначала выберите ровно 3 героев из вашей дружины!');
@@ -82,12 +84,25 @@ document.addEventListener('DOMContentLoaded', () => {
         screenArena.style.display = 'none';
         showMenu();
     };
+
+    // Магазин - теперь отдельный экран
+    document.getElementById('btn-goto-shop').onclick = () => showShop();
+    document.getElementById('btn-shop-back').onclick = () => showMenu();
+
+    // Промокод
+    document.getElementById('btn-open-promo').onclick = () => openPromoModal();
+    document.getElementById('btn-promo-cancel').onclick = () => closePromoModal();
+    document.getElementById('btn-promo-submit').onclick = () => submitPromoCode();
+    document.getElementById('promo-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submitPromoCode();
+    });
 });
 
 function initApp() {
     screenBattle.style.display = 'none';
     screenMenu.style.display = 'none';
     screenArena.style.display = 'none';
+    screenShop.style.display = 'none';
     screenAuth.style.display = 'block';
 
     if (loadProfile()) {
@@ -170,94 +185,118 @@ function renderAuthHeroes() {
     });
 }
 
-// Отрисовка Магазина и Дружины
+// Отрисовка дружины (магазин теперь на отдельном экране - см. showShop)
 export function showMenu() {
     screenAuth.style.display = 'none';
     screenMenu.style.display = 'block';
     screenBattle.style.display = 'none';
     screenArena.style.display = 'none';
+    screenShop.style.display = 'none';
 
-    document.getElementById('ui-coins').innerText = currentProfile.coins;
+    document.getElementById('ui-coins-inline').innerText = currentProfile.coins;
     const stats = currentProfile.stats || { wins: 0, losses: 0, battles: 0 };
     const statsEl = document.getElementById('ui-stats');
     if (statsEl) statsEl.textContent = `Побед: ${stats.wins} · Поражений: ${stats.losses} · Всего боёв: ${stats.battles}`;
 
-    // Синхронизируем радио-кнопки сложности с сохранённым выбором профиля
     const difficulty = currentProfile.difficulty || 'normal';
     document.querySelectorAll('input[name="difficulty"]').forEach(input => {
         input.checked = (input.value === difficulty);
+        input.onchange = () => setDifficulty(input.value);
     });
 
     const myHeroesContainer = document.getElementById('ui-my-heroes');
-    const shopContainer = document.getElementById('ui-shop-heroes');
     const detailsContainer = document.getElementById('menu-hero-details');
     myHeroesContainer.innerHTML = '';
-    shopContainer.innerHTML = '';
     renderHeroDetails(detailsContainer, null);
 
     // Запоминаем, кто уже был выбран в дружину до перерисовки экрана
-    // (showMenu() вызывается повторно после покупки героя в магазине,
-    // и раньше это молча сбрасывало уже готовый выбор игрока)
     const previouslySelectedIds = state.playerTeam.map(c => c.id);
     state.playerTeam = [];
 
-    baseCharacters.forEach(char => {
+    const ownedHeroes = baseCharacters.filter(c => currentProfile.unlockedHeroes.includes(c.id));
+
+    // Промо-герой (см. promocodes.js) - доступен как дополнительный слот на
+    // один ближайший бой, если промокод был активирован и ещё не потрачен.
+    const promoHero = currentProfile.pendingPromoHero
+        ? getSpecialCharacterById(currentProfile.pendingPromoHero.heroId)
+        : null;
+    const rosterHeroes = promoHero ? [...ownedHeroes, promoHero] : ownedHeroes;
+
+    rosterHeroes.forEach(char => {
         const p = passivesSystem[char.passive];
         const card = document.createElement('div');
-        card.className = 'card hero-card';
-
-        if (currentProfile.unlockedHeroes.includes(char.id)) {
-            card.innerHTML = `
-                <div class="avatar" style="background-image: url('${char.img}');"></div>
-                <b>${char.name}</b><br>
-                <div class="passive-badge" title="${p.desc}">${p.name}</div>
-                <small style="display:block; margin-top:8px;">Ваш боец</small>
-            `;
-            if (previouslySelectedIds.includes(char.id) && state.playerTeam.length < 3) {
+        card.className = 'card hero-card' + (char.promoOnly ? ' promo-hero-slot' : '');
+        card.innerHTML = `
+            <div class="avatar" style="background-image: url('${char.img}');"></div>
+            <b>${char.name}</b><br>
+            <div class="passive-badge" title="${p.desc}">${p.name}</div>
+            ${char.promoOnly ? '<div class="promo-hero-tag">🎁 Промо · 1 бой</div>' : '<small style="display:block; margin-top:8px;">Ваш боец</small>'}
+        `;
+        if (previouslySelectedIds.includes(char.id) && state.playerTeam.length < 3) {
+            state.playerTeam.push(char);
+            card.classList.add('selected');
+        }
+        card.onclick = () => {
+            renderHeroDetails(detailsContainer, char);
+            if (state.playerTeam.some(c => c.id === char.id)) {
+                state.playerTeam = state.playerTeam.filter(c => c.id !== char.id);
+                card.classList.remove('selected');
+            } else if (state.playerTeam.length < 3) {
                 state.playerTeam.push(char);
                 card.classList.add('selected');
             }
-            card.onclick = () => {
-                renderHeroDetails(detailsContainer, char);
-                if (state.playerTeam.some(c => c.id === char.id)) {
-                    state.playerTeam = state.playerTeam.filter(c => c.id !== char.id);
-                    card.classList.remove('selected');
-                } else if (state.playerTeam.length < 3) {
-                    state.playerTeam.push(char);
-                    card.classList.add('selected');
-                }
-                document.getElementById('btn-battle').disabled = state.playerTeam.length !== 3;
-            };
-            myHeroesContainer.appendChild(card);
-        } else {
-            card.classList.add('locked');
-            card.innerHTML = `
-                <div class="avatar" style="background-image: url('${char.img}');"></div>
-                <b>${char.name}</b><br>
-                <div class="passive-badge" title="${p.desc}">${p.name}</div>
-                <div style="margin-top:8px;">Цена: <b>${char.price} 💰</b></div>
-                <button style="margin-top:5px; padding: 5px 10px; font-size: 14px;">Купить</button>
-            `;
-            card.onclick = () => {
-                renderHeroDetails(detailsContainer, char);
-            };
-            card.querySelector('button').onclick = (e) => {
-                e.stopPropagation();
-                if (buyHero(char.price, char.id)) {
-                    alert('Герой куплен!');
-                    showMenu();
-                } else {
-                    alert('Не хватает монет!');
-                }
-            };
-            shopContainer.appendChild(card);
-        }
+            document.getElementById('btn-battle').disabled = state.playerTeam.length !== 3;
+        };
+        myHeroesContainer.appendChild(card);
     });
 
     document.getElementById('btn-battle').disabled = state.playerTeam.length !== 3;
+}
 
-    document.querySelectorAll('input[name="difficulty"]').forEach(input => {
-        input.onchange = () => setDifficulty(input.value);
+// Отдельный экран магазина: покупка теперь через подтверждение, а панель
+// характеристик всегда находится под сеткой героев (не мешает на мобильных).
+function showShop() {
+    screenMenu.style.display = 'none';
+    screenShop.style.display = 'block';
+
+    document.getElementById('ui-coins').innerText = currentProfile.coins;
+
+    const shopContainer = document.getElementById('ui-shop-heroes');
+    const detailsContainer = document.getElementById('shop-hero-details');
+    shopContainer.innerHTML = '';
+    renderHeroDetails(detailsContainer, null);
+
+    baseCharacters.filter(char => !currentProfile.unlockedHeroes.includes(char.id)).forEach(char => {
+        const p = passivesSystem[char.passive];
+        const card = document.createElement('div');
+        card.className = 'card hero-card locked';
+        card.innerHTML = `
+            <div class="avatar" style="background-image: url('${char.img}');"></div>
+            <b>${char.name}</b><br>
+            <div class="passive-badge" title="${p.desc}">${p.name}</div>
+            <div style="margin-top:8px;">Цена: <b>${char.price} 💰</b></div>
+            <button style="margin-top:5px; padding: 5px 10px; font-size: 14px;">Купить</button>
+        `;
+        // Клик по карточке - только подсветка + характеристики, покупка отдельной кнопкой
+        card.onclick = () => {
+            Array.from(shopContainer.children).forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            renderHeroDetails(detailsContainer, char);
+        };
+        card.querySelector('button').onclick = (e) => {
+            e.stopPropagation();
+            if (currentProfile.coins < char.price) {
+                alert('Не хватает монет!');
+                return;
+            }
+            if (confirm(`Купить героя "${char.name}" за ${char.price} монет?`)) {
+                if (buyHero(char.price, char.id)) {
+                    alert('Герой куплен!');
+                    showShop();
+                }
+            }
+        };
+        shopContainer.appendChild(card);
     });
 }
 
@@ -283,4 +322,31 @@ function showArenaScreen() {
         };
         container.appendChild(card);
     });
+}
+
+// --------------------------- Промокод ---------------------------
+function openPromoModal() {
+    document.getElementById('promo-input').value = '';
+    document.getElementById('promo-message').textContent = '';
+    document.getElementById('promo-message').className = 'promo-message';
+    document.getElementById('promo-modal-backdrop').style.display = 'flex';
+    document.getElementById('promo-input').focus();
+}
+
+function closePromoModal() {
+    document.getElementById('promo-modal-backdrop').style.display = 'none';
+}
+
+function submitPromoCode() {
+    const value = document.getElementById('promo-input').value;
+    const result = redeemPromoCode(value, promoCodes);
+    const msgEl = document.getElementById('promo-message');
+    msgEl.textContent = result.message;
+    msgEl.className = 'promo-message ' + (result.ok ? 'success' : 'error');
+    if (result.ok) {
+        setTimeout(() => {
+            closePromoModal();
+            showMenu(); // перерисовать дружину, чтобы показать новый промо-слот
+        }, 1200);
+    }
 }

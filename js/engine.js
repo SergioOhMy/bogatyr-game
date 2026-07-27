@@ -53,6 +53,35 @@ export function applyArenaTurnStart(character, arena) {
 }
 
 /**
+ * Тикает статус-эффекты персонажа (яд/ожог, накладываемые skill.dot —
+ * см. characters.js). Мутирует character.hp и список эффектов напрямую
+ * (как и tickCooldowns), возвращает список того, что сработало - для лога
+ * и анимаций на стороне вызывающего кода.
+ */
+export function applyStatusEffects(character) {
+    if (!character.statusEffects || character.statusEffects.length === 0) return [];
+    const applied = [];
+    character.statusEffects.forEach(effect => {
+        const amount = Math.min(character.hp, effect.amountPerTurn);
+        character.hp = Math.max(0, character.hp - effect.amountPerTurn);
+        applied.push({ type: effect.type, amount });
+        effect.turnsLeft--;
+    });
+    character.statusEffects = character.statusEffects.filter(e => e.turnsLeft > 0);
+    return applied;
+}
+
+/** Накладывает DOT-эффект умения (skill.dot) на цель, если он есть и цель жива. */
+export function applySkillDot(skill, target) {
+    if (!skill.dot || target.hp <= 0) return;
+    target.statusEffects.push({
+        type: skill.dot.type,
+        amountPerTurn: Math.round(target.maxHp * skill.dot.amountPercent),
+        turnsLeft: skill.dot.turns
+    });
+}
+
+/**
  * Разрешает одно применение навыка и возвращает структурированный результат,
  * не трогая HP и не работая с DOM — этим занимается вызывающий код (combat.js
  * в браузере или scripts/balance-sim.js в симуляции).

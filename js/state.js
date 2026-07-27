@@ -8,7 +8,8 @@ export const state = {
     timerInterval: null,
     timeLeft: 60,
     currentArena: null,   // выбранная арена на текущий бой (см. js/arenas.js)
-    difficulty: 'normal'  // сложность бота на текущий бой: easy | normal | hard
+    difficulty: 'normal', // сложность бота на текущий бой: easy | normal | hard
+    playerSkipStreak: 0   // сколько ходов подряд игрок пропустил по таймеру (см. combat.js)
 };
 
 export let currentProfile = null;
@@ -24,6 +25,8 @@ function ensureProfileShape(p) {
     if (!p.difficulty) p.difficulty = 'normal';
     if (!Array.isArray(p.unlockedHeroes)) p.unlockedHeroes = [];
     if (typeof p.coins !== 'number') p.coins = 0;
+    if (!Array.isArray(p.redeemedCodes)) p.redeemedCodes = [];
+    if (p.pendingPromoHero === undefined) p.pendingPromoHero = null;
     return p;
 }
 
@@ -121,4 +124,33 @@ export function buyHero(heroPrice, heroId) {
         return true;
     }
     return false;
+}
+
+/**
+ * Пытается активировать промокод для текущего профиля. Код одноразовый
+ * НА ПРОФИЛЬ (хранится в currentProfile.redeemedCodes), а не глобально —
+ * то есть на другом профиле тот же код снова сработает.
+ */
+export function redeemPromoCode(rawCode, promoCodes) {
+    const code = (rawCode || '').trim().toUpperCase();
+    if (!code) return { ok: false, message: 'Введите код.' };
+    if (currentProfile.redeemedCodes.includes(code)) {
+        return { ok: false, message: 'Этот код уже был использован.' };
+    }
+    const promo = promoCodes[code];
+    if (!promo) {
+        return { ok: false, message: 'Такой код не найден.' };
+    }
+    currentProfile.redeemedCodes.push(code);
+    currentProfile.pendingPromoHero = { heroId: promo.heroId, code };
+    saveProfile();
+    return { ok: true, message: `Промокод принят! Герой "${promo.heroName}" доступен на один бой — выберите его в дружину.` };
+}
+
+/** Промо-герой одноразовый: снимаем его после того, как бой (любой исход) завершён. */
+export function clearPendingPromoHero() {
+    if (currentProfile) {
+        currentProfile.pendingPromoHero = null;
+        saveProfile();
+    }
 }

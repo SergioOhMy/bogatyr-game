@@ -18,7 +18,9 @@ function pickLowestHpPercent(list) {
 }
 
 export function chooseBotAction(activeChar, allies, enemies, arena, difficulty = 'normal') {
-    const availableSkills = activeChar.skills.filter(s => activeChar.currentCooldowns[s.name] === 0);
+    const availableSkills = activeChar.skills.filter(s =>
+        activeChar.currentCooldowns[s.name] === 0 && activeChar.turnsTaken >= s.unlockTurn
+    );
     if (availableSkills.length === 0) return null;
 
     const aliveEnemies = enemies.filter(e => e.hp > 0);

@@ -39,11 +39,11 @@ export const baseCharacters = [
     { id: 'c3', name: 'Алёша Попович', img: 'assets/alyosha.png', passive: 'swift', race: 'human', hp: 120, speed: 8, price: 100, skills: [
         { name: 'Выстрел из лука', icon: '🏹', dmg: 29, type: 'attack', cooldown: 0 },
         { name: 'Двойная стрела', icon: '💘', dmg: 50, type: 'attack', cooldown: 2 },
-        { name: 'Отравленная стрела', icon: '🐍', dmg: 44, type: 'attack', cooldown: 3 },
+        { name: 'Отравленная стрела', icon: '🐍', dmg: 32, type: 'attack', cooldown: 3, dot: { type: 'poison', amountPercent: 0.06, turns: 3 } },
         { name: 'Залп из трёх стрел', icon: '🎯', dmg: 90, type: 'attack', cooldown: 4, isUltimate: true }
     ], vfx: { color: '#f39c12', particle: '🎯' } },
 
-    { id: 'c4', name: 'Снегурочка', img: 'assets/snegurochka.png', passive: 'healer', race: 'spirit', hp: 145, speed: 9, price: 150, skills: [
+    { id: 'c4', name: 'Снегурочка', img: 'assets/snegurochka.png', passive: 'healer', race: 'spirit', hp: 172, speed: 9, price: 150, skills: [
         { name: 'Магия холода', icon: '🧊', dmg: 20, type: 'attack', cooldown: 0 },
         { name: 'Свет', icon: '✨', dmg: 40, type: 'attack', cooldown: 2 },
         { name: 'Исцеление', icon: '❄️', dmg: -65, type: 'heal', cooldown: 3 },
@@ -57,11 +57,11 @@ export const baseCharacters = [
         { name: 'Проклятие судьбы', icon: '🔮', dmg: 94, type: 'attack', cooldown: 5, isUltimate: true }
     ], vfx: { color: '#8e44ad', particle: '🔮' } },
 
-    { id: 'c6', name: 'Змей Горыныч', img: 'assets/gorynych.png', passive: 'berserk', race: 'beast', hp: 148, speed: 3, price: 300, skills: [
+    { id: 'c6', name: 'Змей Горыныч', img: 'assets/gorynych.png', passive: 'berserk', race: 'beast', hp: 140, speed: 3, price: 300, skills: [
         { name: 'Укус', icon: '🦖', dmg: 30, type: 'attack', cooldown: 0 },
         { name: 'Удар хвостом', icon: '🦎', dmg: 55, type: 'attack', cooldown: 3 },
-        { name: 'Дыхание огня', icon: '🔥', dmg: 65, type: 'attack', cooldown: 4 },
-        { name: 'Тройное пламя', icon: '🐉', dmg: 88, type: 'attack', cooldown: 5, isUltimate: true }
+        { name: 'Дыхание огня', icon: '🔥', dmg: 52, type: 'attack', cooldown: 4, dot: { type: 'burn', amountPercent: 0.05, turns: 2 } },
+        { name: 'Тройное пламя', icon: '🐉', dmg: 80, type: 'attack', cooldown: 5, isUltimate: true }
     ], vfx: { color: '#e74c3c', particle: '🔥' } },
 
     { id: 'c7', name: 'Колобок', img: 'assets/kolobok.png', passive: 'swift', race: 'spirit', hp: 105, speed: 10, price: 50, skills: [
@@ -71,11 +71,11 @@ export const baseCharacters = [
         { name: 'Укатился и вернулся', icon: '🌀', dmg: 76, type: 'attack', cooldown: 4, isUltimate: true }
     ], vfx: { color: '#d4a017', particle: '🍞' } },
 
-    { id: 'c8', name: 'Кощей Бессмертный', img: 'assets/koschei.png', passive: 'vitality', race: 'undead', hp: 152, speed: 5, price: 500, skills: [
+    { id: 'c8', name: 'Кощей Бессмертный', img: 'assets/koschei.png', passive: 'vitality', race: 'undead', hp: 145, speed: 5, price: 500, skills: [
         { name: 'Удар цепью', icon: '⛓️', dmg: 30, type: 'attack', cooldown: 0 },
         { name: 'Проклятие', icon: '💀', dmg: 50, type: 'attack', cooldown: 2 },
         { name: 'Вытягивание душ', icon: '👻', dmg: -65, type: 'heal', cooldown: 4 },
-        { name: 'Смерть в игле', icon: '🪡', dmg: 80, type: 'attack', cooldown: 5, isUltimate: true }
+        { name: 'Смерть в игле', icon: '🪡', dmg: 74, type: 'attack', cooldown: 5, isUltimate: true }
     ], vfx: { color: '#34495e', particle: '💀' } },
 
     { id: 'c9', name: 'Соловей-разбойник', img: 'assets/solovey.png', passive: 'swift', race: 'beast', hp: 110, speed: 9, price: 250, skills: [
@@ -99,11 +99,11 @@ export const baseCharacters = [
         { name: 'Щучье чудо', icon: '⭐', dmg: 94, type: 'attack', cooldown: 5, isUltimate: true }
     ], vfx: { color: '#f1c40f', particle: '⭐' } },
 
-    { id: 'c12', name: 'Святогор', img: 'assets/svyatogor.png', passive: 'berserk', race: 'human', hp: 180, speed: 2, price: 400, skills: [
+    { id: 'c12', name: 'Святогор', img: 'assets/svyatogor.png', passive: 'berserk', race: 'human', hp: 170, speed: 2, price: 400, skills: [
         { name: 'Тяжелый кулак', icon: '✊', dmg: 35, type: 'attack', cooldown: 0 },
         { name: 'Землетрясение', icon: '🌍', dmg: 60, type: 'attack', cooldown: 3 },
         { name: 'Сокрушительный гнев', icon: '💥', dmg: 68, type: 'attack', cooldown: 4 },
-        { name: 'Гнев исполина', icon: '⚡', dmg: 96, type: 'attack', cooldown: 5, isUltimate: true }
+        { name: 'Гнев исполина', icon: '⚡', dmg: 88, type: 'attack', cooldown: 5, isUltimate: true }
     ], vfx: { color: '#e67e22', particle: '⚡' } },
 
     { id: 'c13', name: 'Василиса Премудрая', img: 'assets/vasilisa.png', passive: 'healer', race: 'spirit', hp: 145, speed: 8, price: 250, skills: [
@@ -111,7 +111,21 @@ export const baseCharacters = [
         { name: 'Живая вода', icon: '💧', dmg: -72, type: 'heal', cooldown: 2 },
         { name: 'Лунная пыльца', icon: '🌙', dmg: -88, type: 'heal', cooldown: 4 },
         { name: 'Дар бессмертия', icon: '🕊️', dmg: -122, type: 'heal', cooldown: 5, isUltimate: true }
-    ], vfx: { color: '#1abc9c', particle: '🕊️' } }
+    ], vfx: { color: '#1abc9c', particle: '🕊️' } },
+
+    { id: 'c14', name: 'Жар-птица', img: 'assets/zharptica.png', passive: 'swift', race: 'spirit', hp: 132, speed: 9, price: 300, skills: [
+        { name: 'Огненное перо', icon: '🪶', dmg: 33, type: 'attack', cooldown: 0 },
+        { name: 'Вспышка света', icon: '✨', dmg: 55, type: 'attack', cooldown: 2 },
+        { name: 'Огненный смерч', icon: '🔥', dmg: -50, type: 'heal', cooldown: 3 },
+        { name: 'Испепеляющий полёт', icon: '🐦‍🔥', dmg: 55, type: 'attack', cooldown: 5, isUltimate: true, aoe: true }
+    ], vfx: { color: '#e67e22', particle: '🔥' } },
+
+    { id: 'c15', name: 'Берегиня', img: 'assets/beregina.png', passive: 'healer', race: 'spirit', hp: 150, speed: 7, price: 300, skills: [
+        { name: 'Прикосновение рощи', icon: '🌸', dmg: 24, type: 'attack', cooldown: 0 },
+        { name: 'Целебный родник', icon: '💧', dmg: -72, type: 'heal', cooldown: 2 },
+        { name: 'Зов природы', icon: '🌿', dmg: -60, type: 'heal', cooldown: 3 },
+        { name: 'Благословение рощи', icon: '🌳', dmg: -70, type: 'heal', cooldown: 5, isUltimate: true, aoe: true }
+    ], vfx: { color: '#2ecc71', particle: '🌸' } }
 ];
 
 export function initHeroStats(char, isBot) {
@@ -134,7 +148,16 @@ export function initHeroStats(char, isBot) {
     hero.passiveFx = p.fx;
 
     hero.currentCooldowns = {};
-    hero.skills.forEach(s => hero.currentCooldowns[s.name] = 0);
+    hero.skills.forEach((s, idx) => {
+        hero.currentCooldowns[s.name] = 0;
+        // Прогрессия открытия умений (v1.02): 1-й навык открыт сразу,
+        // каждый следующий требует на 1 собственный ход бойца больше,
+        // ультимативное умение (всегда последним в списке) открывается
+        // только на 4-й ход владельца ("через три хода").
+        s.unlockTurn = idx + 1;
+    });
+    hero.turnsTaken = 0;
+    hero.statusEffects = []; // яд/ожог и т.п. - см. engine.js -> applyStatusEffects
 
     return hero;
 }

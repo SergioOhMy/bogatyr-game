@@ -58,20 +58,26 @@ export function renderSkills(char, onSkillSelect) {
 
     char.skills.forEach(skill => {
         let btn = document.createElement('button');
-        btn.className = 'skill-btn' + (skill.isUltimate ? ' ultimate-btn' : '');
+        const turnsUntilUnlock = skill.unlockTurn - char.turnsTaken;
+        const isLocked = turnsUntilUnlock > 0;
+        btn.className = 'skill-btn' + (skill.isUltimate ? ' ultimate-btn' : '') + (isLocked ? ' skill-locked' : '');
         if (state.selectedSkill === skill) btn.classList.add('selected-skill');
 
         let cdLeft = char.currentCooldowns[skill.name];
         let displayVal = Math.round(Math.abs(skill.dmg) * (skill.type === 'heal' ? char.healMult : char.dmgMult));
 
-        let innerHtml = `<div><span>${skill.icon}</span> <b>${skill.name}</b>${skill.isUltimate ? ' <span class="ult-tag">ULT</span>' : ''}</div> <small>(${skill.dmg > 0 ? 'Урон' : 'Хил'}: ~${displayVal})</small>`;
-        if (cdLeft > 0) {
+        let innerHtml = `<div><span>${skill.icon}</span> <b>${skill.name}</b>${skill.isUltimate ? ' <span class="ult-tag">ULT</span>' : ''}${skill.aoe ? ' <span class="ult-tag">ВСЕ</span>' : ''}</div> <small>(${skill.dmg > 0 ? 'Урон' : 'Хил'}: ~${displayVal})</small>`;
+
+        if (isLocked) {
+            innerHtml += `<br><small style="color: #95a5a6;">Откроется через ${turnsUntilUnlock} ход(а)</small>`;
+            btn.disabled = true;
+        } else if (cdLeft > 0) {
             innerHtml += `<br><small style="color: #f1c40f;">⏳ Откат: ${cdLeft} ход.</small>`;
             btn.disabled = true;
         }
 
         btn.innerHTML = innerHtml;
-        if (cdLeft === 0) btn.onclick = () => onSkillSelect(skill, btn);
+        if (!isLocked && cdLeft === 0) btn.onclick = () => onSkillSelect(skill, btn);
         container.appendChild(btn);
     });
 }
@@ -80,7 +86,10 @@ export function checkActionState() {
     const btn = document.getElementById('execute-btn');
     if (state.selectedSkill && state.selectedTarget) {
         btn.disabled = false;
-        if (state.selectedSkill.type === 'heal') {
+        if (state.selectedTarget.aoe) {
+            btn.innerText = state.selectedSkill.type === 'heal' ? 'Исцелить всю дружину!' : 'Ударить по всем врагам!';
+            btn.style.background = state.selectedSkill.type === 'heal' ? '#27ae60' : '#c0392b';
+        } else if (state.selectedSkill.type === 'heal') {
             btn.innerText = `Лечить: ${state.selectedTarget.name}!`;
             btn.style.background = '#27ae60';
         } else {

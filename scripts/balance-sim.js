@@ -1,45 +1,43 @@
-// scripts/balance-sim.js
+// scripts/balance-sim.js (v1.02)
 //
 // Офлайн-симулятор баланса. Гоняет тысячи автобоёв "бот против бота" на
-// случайных командах из 13 героев и случайных аренах, считает винрейт
-// каждого героя и записывает markdown-таблицу в balance-report.md.
+// случайных командах и случайных аренах, считает винрейт каждого героя.
+// Учитывает всю боевую механику v1.02: прогрессивное открытие умений по
+// ходам, яд/ожог (DOT), массовые умения (aoe).
 //
-// Запуск:  node scripts/balance-sim.js  (или npm run balance)
-//
-// Важно: это НЕ дублирование логики боя из combat.js. Вся математика урона,
-// лечения, промахов и порядка ходов берётся из js/engine.js — того же
-// модуля, которым пользуется браузерная игра. Здесь только цикл ходов,
-// без DOM, таймеров и анимаций.
+// Запуск: node scripts/balance-sim.js  (или npm run balance)
 
 import { baseCharacters, initHeroStats } from '../js/characters.js';
 import { arenas } from '../js/arenas.js';
 import { chooseBotAction } from '../js/bot.js';
 import {
-    buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart
+    buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
+    applyStatusEffects, applySkillDot
 } from '../js/engine.js';
 import { writeFileSync } from 'fs';
 
 const ITERATIONS = 20000;
-const MAX_TURNS = 200; // предохранитель от зависаний при двух лекарях подряд
-const DIFFICULTY = 'hard'; // фиксируем сторону сложности, чтобы сравнение было честным
+const MAX_TURNS = 250;
+const DIFFICULTY = 'hard';
 
-function pickRandomTeam(pool, size) {
-    const shuffled = [...pool].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, size);
-}
-
-function applyResult(result) {
+function applySingleResult(result) {
     if (result.missed || result.dodged || result.blocked) return;
-    const { target } = result;
-
-    if (result.skill.type === 'attack') {
+    const { target, skill } = result;
+    if (skill.type === 'attack') {
         target.hp = Math.max(0, target.hp - result.amount);
-        if (result.regen && target.hp > 0) {
-            target.hp = Math.min(target.maxHp, target.hp + result.regen);
-        }
+        if (result.regen && target.hp > 0) target.hp = Math.min(target.maxHp, target.hp + result.regen);
+        if (skill.dot && target.hp > 0) applySkillDot(skill, target);
     } else {
         target.hp = Math.min(target.maxHp, target.hp + result.amount);
     }
+}
+
+function runAoe(active, skill, allies, enemies, arena) {
+    const targets = (skill.type === 'attack' ? enemies : allies).filter(c => c.hp > 0);
+    targets.forEach(target => {
+        const result = resolveAction({ attacker: active, target, skill, arena });
+        applySingleResult(result);
+    });
 }
 
 function runOneBattle(teamAIds, teamBIds, arena) {
@@ -63,31 +61,37 @@ function runOneBattle(teamAIds, teamBIds, arena) {
 
         if (active.hp <= 0) continue;
 
+        active.turnsTaken++;
         tickCooldowns(active);
 
         const isTeamA = teamA.includes(active);
         const allies = isTeamA ? teamA : teamB;
         const enemies = isTeamA ? teamB : teamA;
 
-        const startEffect = applyArenaTurnStart(active, arena);
-        if (startEffect) {
-            if (startEffect.type === 'heal') active.hp = Math.min(active.maxHp, active.hp + startEffect.amount);
-            else if (startEffect.type === 'burn') active.hp = Math.max(0, active.hp - startEffect.amount);
-            if (active.hp <= 0) continue;
+        const arenaEffect = applyArenaTurnStart(active, arena);
+        if (arenaEffect) {
+            if (arenaEffect.type === 'heal') active.hp = Math.min(active.maxHp, active.hp + arenaEffect.amount);
+            else if (arenaEffect.type === 'burn') active.hp = Math.max(0, active.hp - arenaEffect.amount);
         }
+        applyStatusEffects(active);
+        if (active.hp <= 0) continue;
 
         const action = chooseBotAction(active, allies, enemies, arena, DIFFICULTY);
         if (!action) continue;
         const { skill, target } = action;
-        if (!target || target.hp <= 0) continue;
 
-        active.currentCooldowns[skill.name] = skill.cooldown;
+        if (skill.aoe) {
+            runAoe(active, skill, allies, enemies, arena);
+            continue;
+        }
+
+        if (!target || target.hp <= 0) continue;
         const result = resolveAction({ attacker: active, target, skill, arena });
-        applyResult(result);
+        applySingleResult(result);
 
         if (result.doubleCast && active.hp > 0 && target.hp > 0) {
             const second = resolveAction({ attacker: active, target, skill, arena });
-            applyResult(second);
+            applySingleResult(second);
         }
     }
     return { winner: 'draw' };
@@ -110,7 +114,6 @@ function main() {
         const { winner } = runOneBattle(teamAIds, teamBIds, arena);
         if (winner === 'A') teamAIds.forEach(id => wins[id]++);
         if (winner === 'B') teamBIds.forEach(id => wins[id]++);
-        // draw - никому не засчитываем
     }
 
     const rows = baseCharacters.map(c => {
@@ -119,16 +122,16 @@ function main() {
         return { name: c.name, price: c.price, appearances: app, winRate: parseFloat(winRate) };
     }).sort((a, b) => b.winRate - a.winRate);
 
-    let md = `# Отчёт по балансу (симуляция бот-vs-бот, сложность "${DIFFICULTY}")\n\n`;
-    md += `Итераций: ${ITERATIONS}, случайные команды 3v3, случайная арена на каждый бой.\n\n`;
+    let md = `# Отчёт по балансу v1.02 (симуляция бот-vs-бот, сложность "${DIFFICULTY}")\n\n`;
+    md += `Итераций: ${ITERATIONS}, случайные команды 3v3 из ${baseCharacters.length} героев, случайная арена на каждый бой. `;
+    md += `Учитывает прогрессивное открытие умений по ходам, DOT (яд/ожог) и массовые умения.\n\n`;
     md += `| Герой | Цена | Появлений | Винрейт |\n|---|---|---|---|\n`;
     rows.forEach(r => {
         md += `| ${r.name} | ${r.price} 💰 | ${r.appearances} | ${r.winRate}% |\n`;
     });
 
     const avg = rows.reduce((s, r) => s + r.winRate, 0) / rows.length;
-    md += `\nСредний винрейт по всем героям: ${avg.toFixed(1)}% (в идеале ~50%, т.к. это же среднее по случайным 3v3-командам).\n`;
-    md += `\nГерои с винрейтом заметно выше среднего считаются сильными относительно цены, заметно ниже — кандидаты на баф.\n`;
+    md += `\nСредний винрейт по всем героям: ${avg.toFixed(1)}% (в идеале ~50%).\n`;
 
     writeFileSync(new URL('../balance-report.md', import.meta.url), md);
     console.log(md);

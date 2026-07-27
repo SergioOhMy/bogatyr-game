@@ -4,10 +4,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta charset="UTF-8">
     <title>Битва Богатырей</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Yeseva+One&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <div class="version-badge">v1.02</div>
+
     <h1 class="game-title">Битва Богатырей</h1>
+    <div class="game-subtitle">Легенды Руси</div>
+    <div class="title-ornament">❈ ❈ ❈</div>
 
     <!-- 1. ЭКРАН ВЫБОРА И СОЗДАНИЯ ПРОФИЛЯ -->
     <div id="screen-auth" class="screen" style="display: none;">
@@ -15,7 +21,7 @@
         <div id="auth-create">
             <h2>Создание профиля</h2>
             <input type="text" id="input-name" placeholder="Введите ваше имя">
-            <p>Выберите ровно 3 стартовых героев:</p>
+            <p>Выберите ровно 3 стартовых героя:</p>
             <div id="auth-heroes-list" class="heroes-grid"></div>
             <div id="auth-hero-details" class="hero-details-panel"></div>
             <button id="btn-create" class="primary-btn" disabled>Создать профиль</button>
@@ -34,7 +40,7 @@
         </div>
     </div>
 
-    <!-- 2. ГЛАВНОЕ МЕНЮ И МАГАЗИН -->
+    <!-- 2. ГЛАВНОЕ МЕНЮ (только дружина, без магазина - магазин теперь отдельным экраном) -->
     <div id="screen-menu" class="screen" style="display: none;">
 
         <h2 class="squad-title">Собери свою дружину (Выберите 3-х героев)</h2>
@@ -50,16 +56,39 @@
             <label><input type="radio" name="difficulty" value="hard"> Сложная</label>
         </div>
 
-        <div class="menu-actions" style="margin-top: 20px; margin-bottom: 40px;">
+        <div class="menu-actions" style="margin-top: 20px; margin-bottom: 20px;">
             <button id="btn-battle" class="primary-btn" disabled>В бой!</button>
+            <br>
+            <button id="btn-goto-shop" style="margin-top: 12px; background:#16a085;">🛒 Магазин героев (<span id="ui-coins-inline">0</span> 💰)</button>
+            <br>
+            <button id="btn-open-promo" class="promo-btn">🎁 Ввести промокод</button>
         </div>
 
-        <hr style="border-color: #7f8c8d; margin-bottom: 20px;">
+        <button id="btn-logout" class="danger-btn" style="margin-top: 10px;">Сменить профиль</button>
+    </div>
 
-        <h3>Магазин Героев (Баланс: <b id="ui-coins" style="color: #f1c40f;">0</b> 💰)</h3>
+    <!-- 2.2 ОТДЕЛЬНЫЙ ЭКРАН МАГАЗИНА -->
+    <div id="screen-shop" class="screen" style="display: none;">
+        <div class="shop-header">
+            <h2 style="margin:0;">Магазин Героев</h2>
+            <div>Баланс: <b id="ui-coins" style="color: #f1c40f;">0</b> 💰</div>
+        </div>
         <div id="ui-shop-heroes" class="heroes-grid"></div>
+        <div id="shop-hero-details" class="hero-details-panel"></div>
+        <button id="btn-shop-back" class="danger-btn" style="margin-top: 20px;">Назад в дружину</button>
+    </div>
 
-        <button id="btn-logout" class="danger-btn" style="margin-top: 30px;">Сменить профиль</button>
+    <!-- 2.4 ПРОМОКОД: МОДАЛЬНОЕ ОКНО -->
+    <div id="promo-modal-backdrop" class="promo-modal-backdrop" style="display: none;">
+        <div class="promo-modal">
+            <h3>Ввести промокод</h3>
+            <input type="text" id="promo-input" placeholder="СЛОВО-КОД" maxlength="30">
+            <div id="promo-message" class="promo-message"></div>
+            <div class="promo-modal-actions">
+                <button id="btn-promo-submit" class="primary-btn">Применить</button>
+                <button id="btn-promo-cancel" class="danger-btn">Отмена</button>
+            </div>
+        </div>
     </div>
 
     <!-- 2.5. ЭКРАН ВЫБОРА АРЕНЫ -->
@@ -74,13 +103,18 @@
     </div>
 
     <!-- 3. ЭКРАН БОЯ -->
-    <div id="screen-battle" class="screen" style="display: none;">
+    <div id="screen-battle" class="screen arena-bg-field" style="display: none;">
+        <div class="battlefield-header">
+            <span class="team-label mine">🛡️ Ваша дружина</span>
+            <span class="vs-divider">VS</span>
+            <span class="team-label enemy">⚔️ Противник</span>
+        </div>
         <h2 id="turn-indicator">Ходит: ...</h2>
         <p><span id="arena-label"></span> · Время на ход: <span id="timer-display">60</span> сек</p>
 
         <div class="battlefield">
-            <div id="player-team" class="team"></div>
-            <div id="enemy-team" class="team"></div>
+            <div id="player-team" class="team mine"></div>
+            <div id="enemy-team" class="team enemy"></div>
         </div>
 
         <div id="skills-container" class="skills"></div>

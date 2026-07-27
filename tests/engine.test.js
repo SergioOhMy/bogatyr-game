@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
     computeAttackDamage, computeHealAmount, tickCooldowns,
-    buildTurnQueue, resolveAction, rollChance
+    buildTurnQueue, resolveAction, rollChance,
+    applyStatusEffects, applySkillDot
 } from '../js/engine.js';
 
 function makeFighter(overrides = {}) {
@@ -13,6 +14,7 @@ function makeFighter(overrides = {}) {
         initiativeScore: 50,
         currentCooldowns: { 'Удар': 0 },
         race: 'human',
+        statusEffects: [],
         ...overrides
     };
 }
@@ -125,5 +127,44 @@ describe('resolveAction', () => {
         const result = resolveAction({ attacker, target, skill, rng: () => 0 });
         expect(result.critHeal).toBe(true);
         expect(result.amount).toBe(75);
+    });
+});
+
+describe('applySkillDot + applyStatusEffects (яд/ожог)', () => {
+    it('накладывает DOT-эффект на цель после атаки с полем skill.dot', () => {
+        const target = makeFighter({ maxHp: 200 });
+        const skill = { dmg: 20, type: 'attack', dot: { type: 'poison', amountPercent: 0.05, turns: 3 } };
+        applySkillDot(skill, target);
+        expect(target.statusEffects.length).toBe(1);
+        expect(target.statusEffects[0].amountPerTurn).toBe(10); // 5% от 200
+        expect(target.statusEffects[0].turnsLeft).toBe(3);
+    });
+
+    it('не накладывает эффект, если у цели уже 0 HP', () => {
+        const target = makeFighter({ hp: 0, maxHp: 200 });
+        const skill = { dmg: 20, type: 'attack', dot: { type: 'poison', amountPercent: 0.05, turns: 3 } };
+        applySkillDot(skill, target);
+        expect(target.statusEffects.length).toBe(0);
+    });
+
+    it('тикает урон каждый ход и снимает эффект по истечении turnsLeft', () => {
+        const target = makeFighter({ hp: 100, maxHp: 100 });
+        target.statusEffects.push({ type: 'burn', amountPerTurn: 10, turnsLeft: 2 });
+
+        let applied = applyStatusEffects(target);
+        expect(target.hp).toBe(90);
+        expect(applied).toEqual([{ type: 'burn', amount: 10 }]);
+        expect(target.statusEffects[0].turnsLeft).toBe(1);
+
+        applied = applyStatusEffects(target);
+        expect(target.hp).toBe(80);
+        expect(target.statusEffects.length).toBe(0); // эффект закончился
+    });
+
+    it('не опускает HP ниже нуля', () => {
+        const target = makeFighter({ hp: 5, maxHp: 100 });
+        target.statusEffects.push({ type: 'poison', amountPerTurn: 20, turnsLeft: 1 });
+        applyStatusEffects(target);
+        expect(target.hp).toBe(0);
     });
 });
