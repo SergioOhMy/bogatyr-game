@@ -1,10 +1,10 @@
 import { state, winBattle, recordLoss, clearPendingPromoHero, currentProfile, DIFFICULTY_REWARDS } from './state.js';
-import { showMenu } from './main.js';
+import { showMenu, showPostBattleChest } from './main.js';
 import { initHeroStats, baseCharacters } from './characters.js';
 import {
     log, renderBattlefield, renderSkills, checkActionState,
     playHitFx, playMissFx, playDodgeFx, playBlockFx,
-    playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx, playBuffFx
+    playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx, playBuffFx, pulseCompanion
 } from './ui.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
@@ -13,6 +13,7 @@ import {
 } from './engine.js';
 import { getArenaById } from './arenas.js';
 import { chooseBotAction } from './bot.js';
+import { getRandomWeapon } from './items.js';
 
 export function startCombat(arenaId, difficulty) {
     state.currentArena = getArenaById(arenaId);
@@ -22,8 +23,8 @@ export function startCombat(arenaId, difficulty) {
     let remaining = baseCharacters.filter(c => !state.playerTeam.some(p => p.id === c.id));
     let shuffledBots = remaining.sort(() => 0.5 - Math.random()).slice(0, 3);
 
-    state.enemyTeam = shuffledBots.map(c => initHeroStats(c, true));
-    state.playerTeam = state.playerTeam.map(c => initHeroStats(c, false));
+    state.enemyTeam = shuffledBots.map(c => initHeroStats(c, true, Math.random() < 0.8 ? getRandomWeapon().id : null));
+    state.playerTeam = state.playerTeam.map(c => initHeroStats(c, false, (currentProfile.equippedWeapons || {})[c.id] || null));
 
     // Единая очередь ходов по инициативе среди всех 6 бойцов сразу
     state.turnQueue = buildTurnQueue(state.playerTeam, state.enemyTeam);
@@ -177,6 +178,7 @@ export function startTurn() {
             weakest.hp = Math.max(0, weakest.hp - companionBuff.value);
             log(`${meta.icon} ${meta.label} <b>${activeChar.name}</b> кусает <b>${weakest.name}</b> и наносит ${companionBuff.value} урона!`);
             playHitFx(weakest, { crit: false, amount: companionBuff.value });
+            pulseCompanion(activeChar.id);
             if (weakest.hp <= 0) {
                 weakest.hp = 0;
                 log(`<span class="death-log">💀 ${weakest.name} погибает!</span>`);
@@ -191,12 +193,16 @@ export function startTurn() {
     document.getElementById('turn-indicator').innerText = `Ходит: ${activeChar.name}`;
 
     const actionBtn = document.getElementById('execute-btn');
-    if (activeChar.isBot) {
-        actionBtn.style.display = 'none';
-    } else {
-        actionBtn.style.display = 'block';
-    }
     checkActionState();
+    // ВАЖНО: кнопку больше не прячем через display:none - раньше это
+    // заставляло весь низ экрана (лог боя и т.д.) прыгать вверх-вниз при
+    // каждой смене хода игрок/бот. Вместо скрытия - просто блокируем её
+    // (и делаем это ПОСЛЕ checkActionState, иначе он перезатрёт текст).
+    if (activeChar.isBot) {
+        actionBtn.disabled = true;
+        actionBtn.innerText = `Ход противника: ${activeChar.name}...`;
+        actionBtn.style.background = '#7f8c8d';
+    }
 
     renderBattlefield(onTargetSelect);
     renderSkills(activeChar, onSkillSelect);
@@ -226,7 +232,7 @@ function handleTurnTimeout(activeChar) {
         setTimeout(() => {
             recordLoss();
             alert('Поражение! Два пропущенных хода подряд — бой проигран автоматически.');
-            showMenu();
+            showPostBattleChest(showMenu);
         }, 600);
         return;
     }
@@ -513,7 +519,7 @@ function checkWinCondition() {
             recordLoss();
             finishBattle();
             alert('Поражение! Вражеские богатыри оказались сильнее.');
-            showMenu();
+            showPostBattleChest(showMenu);
         }, 600);
     } else if (aliveBots === 0) {
         setTimeout(() => {
@@ -521,7 +527,7 @@ function checkWinCondition() {
             finishBattle();
             const reward = DIFFICULTY_REWARDS[state.difficulty] || DIFFICULTY_REWARDS.normal;
             alert(`Победа! Слава вашей дружине! Вы получили ${reward} монет 💰`);
-            showMenu();
+            showPostBattleChest(showMenu);
         }, 600);
     } else {
         nextTurn();

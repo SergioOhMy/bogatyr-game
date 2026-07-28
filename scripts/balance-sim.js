@@ -11,6 +11,7 @@
 import { baseCharacters, initHeroStats } from '../js/characters.js';
 import { arenas } from '../js/arenas.js';
 import { chooseBotAction } from '../js/bot.js';
+import { getRandomWeapon } from '../js/items.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
     applyStatusEffects, applySkillDot,
@@ -67,8 +68,8 @@ function runSummon(active, skill) {
 }
 
 function runOneBattle(teamAIds, teamBIds, arena) {
-    const teamA = teamAIds.map(id => initHeroStats(baseCharacters.find(c => c.id === id), true));
-    const teamB = teamBIds.map(id => initHeroStats(baseCharacters.find(c => c.id === id), true));
+    const teamA = teamAIds.map(id => initHeroStats(baseCharacters.find(c => c.id === id), true, Math.random() < 0.8 ? getRandomWeapon().id : null));
+    const teamB = teamBIds.map(id => initHeroStats(baseCharacters.find(c => c.id === id), true, Math.random() < 0.8 ? getRandomWeapon().id : null));
 
     let queue = buildTurnQueue(teamA, teamB);
     let turns = 0;

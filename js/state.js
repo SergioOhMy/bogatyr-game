@@ -30,6 +30,8 @@ function ensureProfileShape(p) {
     if (!p.avatar) p.avatar = 'assets/ilya.png';
     if (!Array.isArray(p.unlockedSkins)) p.unlockedSkins = [];
     if (!p.equippedSkins || typeof p.equippedSkins !== 'object') p.equippedSkins = {};
+    if (!Array.isArray(p.inventory)) p.inventory = [];
+    if (!p.equippedWeapons || typeof p.equippedWeapons !== 'object') p.equippedWeapons = {};
     return p;
 }
 
@@ -151,25 +153,115 @@ export function equipSkin(heroId, skinId) {
     return true;
 }
 
+// --------------------------- Инвентарь и оружие (v1.04) ---------------------------
+
+export const INVENTORY_CAPACITY = 15;
+
+/** Добавляет оружие в инвентарь (дубликаты разрешены - можно продать лишние). */
+export function addWeaponToInventory(weaponId) {
+    currentProfile.inventory.push(weaponId);
+    saveProfile();
+}
+
 /**
- * Пытается активировать промокод для текущего профиля. Код одноразовый
- * НА ПРОФИЛЬ (хранится в currentProfile.redeemedCodes), а не глобально —
- * то есть на другом профиле тот же код снова сработает.
+ * Выдаёт награду за сундук: обычно оружие, но если это НОВЫЙ тип оружия
+ * (не дубликат) и инвентарь уже заполнен (INVENTORY_CAPACITY уникальных
+ * типов), вместо оружия начисляет монеты по цене продажи этого оружия.
  */
-export function redeemPromoCode(rawCode, promoCodes) {
-    const code = (rawCode || '').trim().toUpperCase();
-    if (!code) return { ok: false, message: 'Введите код.' };
-    if (currentProfile.redeemedCodes.includes(code)) {
+export function grantChestReward(weapon) {
+    const alreadyOwned = currentProfile.inventory.includes(weapon.id);
+    const uniqueCount = new Set(currentProfile.inventory).size;
+    const full = !alreadyOwned && uniqueCount >= INVENTORY_CAPACITY;
+
+    if (full) {
+        currentProfile.coins += weapon.sellPrice;
+        saveProfile();
+        return { type: 'coins', amount: weapon.sellPrice };
+    }
+    currentProfile.inventory.push(weapon.id);
+    saveProfile();
+    return { type: 'weapon', weapon };
+}
+
+/** Надеть оружие на героя (или снять, если weaponId === null). */
+export function equipWeapon(heroId, weaponId) {
+    if (weaponId && !currentProfile.inventory.includes(weaponId)) return false;
+    currentProfile.equippedWeapons[heroId] = weaponId || null;
+    saveProfile();
+    return true;
+}
+
+/** Продать одну единицу оружия из инвентаря за монеты. Снимает его только с "лишних" героев, если копий стало меньше, чем надето. */
+export function sellWeapon(weaponId, price) {
+    const idx = currentProfile.inventory.indexOf(weaponId);
+    if (idx === -1) return false;
+    currentProfile.inventory.splice(idx, 1);
+    currentProfile.coins += price;
+
+    const remaining = currentProfile.inventory.filter(id => id === weaponId).length;
+    const equippedHeroIds = Object.keys(currentProfile.equippedWeapons).filter(h => currentProfile.equippedWeapons[h] === weaponId);
+    if (equippedHeroIds.length > remaining) {
+        equippedHeroIds.slice(remaining).forEach(h => { currentProfile.equippedWeapons[h] = null; });
+    }
+    saveProfile();
+    return true;
+}
+
+/** Личное оружие Волколака выдаётся автоматически и сразу надето, когда герой впервые появляется у профиля. */
+export function grantPersonalWeaponIfNeeded(heroId, weaponId) {
+    if (!currentProfile.inventory.includes(weaponId)) {
+        currentProfile.inventory.push(weaponId);
+    }
+    if (!currentProfile.equippedWeapons[heroId]) {
+        currentProfile.equippedWeapons[heroId] = weaponId;
+    }
+    saveProfile();
+}
+
+/**
+ * Пытается активировать промокод для текущего профиля (v1.04: коды теперь
+ * сверяются по хэшу, см. js/promocodes.js -> resolvePromoCode).
+ * Каждый код одноразовый НА ПРОФИЛЬ - на другом профиле сработает снова.
+ */
+export async function redeemPromoCode(rawCode, resolvePromoCode) {
+    if (!rawCode || !rawCode.trim()) return { ok: false, message: 'Введите код.' };
+
+    const { hash, promo } = await resolvePromoCode(rawCode);
+    if (!promo) return { ok: false, message: 'Такой код не найден.' };
+
+    if (currentProfile.redeemedCodes.includes(hash)) {
         return { ok: false, message: 'Этот код уже был использован.' };
     }
-    const promo = promoCodes[code];
-    if (!promo) {
-        return { ok: false, message: 'Такой код не найден.' };
+    if (promo.exclusiveWith && promo.exclusiveWith.some(h => currentProfile.redeemedCodes.includes(h))) {
+        return { ok: false, message: 'Этот код недоступен — у вас уже активирован связанный с ним промокод.' };
     }
-    currentProfile.redeemedCodes.push(code);
-    currentProfile.pendingPromoHero = { heroId: promo.heroId, code };
-    saveProfile();
-    return { ok: true, message: `Промокод принят! Герой "${promo.heroName}" доступен на один бой — выберите его в дружину.` };
+    if (promo.type === 'hero_temp' && currentProfile.unlockedHeroes.includes(promo.heroId)) {
+        return { ok: false, message: 'У вас уже есть этот герой навсегда — временный код не нужен.' };
+    }
+
+    currentProfile.redeemedCodes.push(hash);
+
+    if (promo.type === 'hero_temp') {
+        currentProfile.pendingPromoHero = { heroId: promo.heroId, hash };
+        if (promo.heroId === 'volkolak') grantPersonalWeaponIfNeeded('volkolak', 'moonfang_volkolak');
+        saveProfile();
+        return { ok: true, message: `Промокод принят! Герой «${promo.heroName}» доступен на один бой — выберите его в дружину.` };
+    }
+    if (promo.type === 'hero_permanent') {
+        if (!currentProfile.unlockedHeroes.includes(promo.heroId)) {
+            currentProfile.unlockedHeroes.push(promo.heroId);
+        }
+        currentProfile.pendingPromoHero = null; // постоянный доступ важнее временного слота
+        if (promo.heroId === 'volkolak') grantPersonalWeaponIfNeeded('volkolak', 'moonfang_volkolak');
+        saveProfile();
+        return { ok: true, message: `Промокод принят! Герой «${promo.heroName}» теперь у вас навсегда.` };
+    }
+    if (promo.type === 'coins') {
+        currentProfile.coins += promo.amount;
+        saveProfile();
+        return { ok: true, message: `Промокод принят! Начислено ${promo.amount} монет 💰` };
+    }
+    return { ok: false, message: 'Неизвестный тип промокода.' };
 }
 
 /** Промо-герой одноразовый: снимаем его после того, как бой (любой исход) завершён. */

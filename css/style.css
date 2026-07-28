@@ -39,12 +39,13 @@ button:disabled { background: #7f8c8d; cursor: not-allowed; }
 .passive-info { font-size: 10px; color: #bdc3c7; margin-top: 2px; }
 
 .ui-panel { background: #1abc9c; padding: 15px; border-radius: 10px; margin-top: 20px; }
-.skills { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 10px; margin-bottom: 15px; }
-.skill-btn { background: #16a085; font-size: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 150px; padding: 10px; }
+.skills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; margin-bottom: 15px; }
+.skill-btn { background: #16a085; font-size: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; padding: 10px; min-height: 78px; }
 .skill-btn.selected-skill { border: 2px solid #fff; transform: scale(1.05); background: #2980b9; }
 .skill-btn:disabled { opacity: 0.8; background: #7f8c8d; border: none; transform: none; }
+.skill-btn-bot { opacity: 0.5; }
 
-#execute-btn { display: none; width: 300px; margin: 0 auto; font-size: 20px; padding: 15px; }
+#execute-btn { display: block; width: 300px; margin: 0 auto; font-size: 20px; padding: 15px; }
 #timer-display { font-size: 24px; font-weight: bold; color: #e74c3c; }
 #combat-log { margin-top: 20px; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; max-height: 150px; overflow-y: auto; text-align: left; }
 .death-log { color: #e74c3c; font-weight: bold; }
@@ -83,7 +84,9 @@ body {
 
 .heroes-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, 150px);
+    justify-content: center;
+    justify-items: center;
     gap: 15px;
     margin: 20px 0;
 }
@@ -94,7 +97,18 @@ body {
     padding: 10px;
     cursor: pointer;
     transition: 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    height: 100%;
 }
+.hero-card > button,
+.hero-card .promo-hero-tag,
+.hero-card small:last-child {
+    margin-top: auto;
+}
+.hero-card > button { align-self: stretch; }
 
 .hero-card.locked {
     filter: grayscale(80%);
@@ -177,6 +191,9 @@ body {
 .detail-stat { color: #ecf0f1; }
 .detail-passive { font-size: 12px; color: #bdc3c7; margin-bottom: 4px; }
 .detail-ultimate { font-size: 12px; color: #f1c40f; }
+.detail-weapon { font-size: 12px; color: #3498db; margin-bottom: 4px; }
+.detail-weapon-empty { color: #7f8c8d; font-style: italic; }
+.weapon-bonus-tag { color: #2ecc71; font-size: 11px; }
 
 /* =========================================================================
    АРЕНЫ
@@ -256,8 +273,8 @@ body {
 
 /* Знахарь: крит. исцеление - белое/золотое пульсирующее свечение */
 @keyframes critheal-kf {
-    0%, 100% { box-shadow: 0 0 0 rgba(241, 196, 15, 0); }
-    50% { box-shadow: 0 0 26px 8px rgba(241, 196, 15, 0.9); transform: scale(1.03); }
+    0%, 100% { box-shadow: 0 0 0 rgba(26, 188, 156, 0); }
+    50% { box-shadow: 0 0 26px 8px rgba(26, 188, 156, 0.9); transform: scale(1.03); }
 }
 .fx-critheal { animation: critheal-kf 0.5s ease-in-out; }
 
@@ -305,9 +322,10 @@ body {
 .floating-dmg { color: #e74c3c; }
 .floating-crit { color: #ff3b30; font-size: 26px; }
 .floating-heal { color: #2ecc71; }
-.floating-critheal { color: #f1c40f; font-size: 24px; }
+.floating-critheal { color: #1abc9c; font-size: 24px; }
 .floating-miss, .floating-dodge, .floating-block { color: #bdc3c7; font-size: 16px; }
 .floating-regen { color: #2ecc71; font-size: 16px; }
+.floating-doublecast { color: #f1c40f; font-size: 18px; }
 
 /* Всплеск фирменной частицы ультимативного умения (эмодзи героя) */
 @keyframes vfx-burst-kf {
@@ -330,7 +348,7 @@ body {
     .game-title { font-size: 28px; }
     .squad-title { font-size: 18px; }
 
-    .heroes-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+    .heroes-grid { grid-template-columns: repeat(auto-fit, 120px); gap: 10px; }
     .card { width: auto; padding: 8px; }
     .avatar { width: 72px; height: 72px; }
 
@@ -338,7 +356,7 @@ body {
     .details-grid { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
 
     .skills { gap: 8px; }
-    .skill-btn { min-width: 130px; font-size: 13px; padding: 8px; }
+    .skill-btn { font-size: 13px; padding: 8px; min-height: 84px; }
 
     .fighter { padding: 6px; }
     .fighter .avatar { width: 40px; height: 40px; margin: 0 6px 0 0; flex-shrink: 0; }
@@ -531,7 +549,7 @@ body {
 /* =========================================================================
    БАФЫ/ДЕБАФЫ (v1.03): бейджи на карточке бойца + generic-анимация
    ========================================================================= */
-.buffs-row { display: flex; gap: 3px; margin-top: 2px; }
+.buffs-row { display: flex; gap: 3px; margin-top: 2px; min-height: 16px; }
 .buff-badge { font-size: 13px; background: rgba(0,0,0,0.35); border-radius: 4px; padding: 0 3px; }
 
 @keyframes buff-positive-kf {
@@ -548,3 +566,110 @@ body {
 
 .special-btn { background: linear-gradient(135deg, #34495e, #2c3e50); border: 2px solid #8e44ad; }
 .special-btn:hover:not(:disabled) { background: linear-gradient(135deg, #3d566e, #34495e); }
+
+/* =========================================================================
+   ПОЛЯ ВВОДА (было еле заметное поле имени профиля - трудно попасть пальцем)
+   ========================================================================= */
+input[type="text"] {
+    padding: 14px 16px;
+    font-size: 18px;
+    border-radius: 8px;
+    border: 2px solid #7f8c8d;
+    width: 100%;
+    max-width: 320px;
+    box-sizing: border-box;
+    display: block;
+    margin: 10px auto;
+    text-align: center;
+    background: #ecf0f1;
+    color: #1a252f;
+}
+input[type="text"]:focus {
+    outline: none;
+    border-color: #f1c40f;
+}
+@media (max-width: 768px) {
+    input[type="text"] { font-size: 20px; padding: 16px; }
+}
+
+/* =========================================================================
+   СУНДУК
+   ========================================================================= */
+.chest-modal { text-align: center; }
+.chest-icon { font-size: 60px; margin-bottom: 10px; }
+.chest-img { width: 120px; height: 120px; object-fit: contain; margin: 0 auto 10px; display: block; }
+
+/* =========================================================================
+   ИНВЕНТАРЬ (v1.04)
+   ========================================================================= */
+.inventory-hero-picker { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 15px; }
+.inventory-hero-thumb {
+    width: 100px; height: 100px; border-radius: 10px; background-size: cover; background-position: center;
+    border: 3px solid #7f8c8d; cursor: pointer;
+}
+.inventory-hero-thumb.selected { border-color: #f1c40f; box-shadow: 0 0 8px #f1c40f; }
+
+.inventory-active-hero {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    background: #2c3e50; border-radius: 10px; padding: 15px; margin: 0 auto 20px; max-width: 420px;
+}
+.inventory-active-row { display: flex; align-items: center; gap: 15px; }
+.inventory-hero-portrait { width: 190px; height: 190px; border-radius: 10px; background-size: cover; background-position: center; border: 3px solid #7f8c8d; }
+.inventory-hero-name { font-size: 20px; }
+.inventory-weapon-slot {
+    width: 64px; height: 64px; border-radius: 8px; border: 3px dashed #7f8c8d; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 28px; cursor: pointer;
+    background: #34495e;
+}
+.inventory-weapon-slot.filled { border-style: solid; border-color: #f1c40f; }
+
+.weapon-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; max-width: 420px; margin: 0 auto 20px; }
+.weapon-slot-item {
+    width: 100%; aspect-ratio: 1; border-radius: 8px; border: 2px solid #7f8c8d;
+    background: #34495e; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; cursor: pointer; position: relative;
+}
+.weapon-slot-item.empty { border-style: dashed; opacity: 0.35; cursor: default; }
+.weapon-slot-item.selected { border-color: #f1c40f; box-shadow: 0 0 8px #f1c40f; }
+.weapon-count-badge { position: absolute; bottom: 2px; right: 4px; font-size: 10px; background: rgba(0,0,0,0.6); border-radius: 3px; padding: 0 3px; }
+
+.weapon-details-panel {
+    background: #2c3e50; border: 2px solid #f1c40f; border-radius: 10px;
+    padding: 15px; max-width: 420px; margin: 0 auto 20px; text-align: center;
+}
+.weapon-details-panel .weapon-effects { font-size: 13px; color: #bdc3c7; margin: 8px 0; }
+.weapon-details-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+@media (max-width: 768px) {
+    .inventory-hero-thumb { width: 80px; height: 80px; }
+    .inventory-hero-portrait { width: 150px; height: 150px; }
+    .weapon-grid { grid-template-columns: repeat(4, 1fr); max-width: 320px; }
+}
+
+/* =========================================================================
+   ГЛОБАЛЬНАЯ ТРЯСКА ЭКРАНА ПРИ КРИТЕ (v1.04)
+   ========================================================================= */
+@keyframes screen-shake-kf {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-4px); }
+    40%, 60% { transform: translateX(4px); }
+}
+body.screen-shake { animation: screen-shake-kf 0.4s ease-in-out; }
+
+/* =========================================================================
+   ВИДИМЫЙ СПУТНИК (скелет/медведь и т.п., см. companion-баф)
+   ========================================================================= */
+.companion-card {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,0.35); border: 1px dashed #8e44ad; border-radius: 6px;
+    padding: 4px 8px; font-size: 12px; color: #d5c4e8;
+}
+.companion-icon { font-size: 18px; }
+.companion-label small { color: #95a5a6; }
+
+@keyframes companion-pulse-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(142, 68, 173, 0); }
+    50% { box-shadow: 0 0 12px 3px rgba(142, 68, 173, 0.9); }
+}
+.companion-card.pulse { animation: companion-pulse-kf 0.5s ease-in-out; }

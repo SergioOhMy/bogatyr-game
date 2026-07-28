@@ -12,6 +12,8 @@
 //    героя (js/ui.js -> playUltimateFx). Так каждый герой получает свою
 //    "фирменную" анимацию, не потребовав 13 отдельных наборов @keyframes.
 
+import { getWeaponById, applyWeaponEffect } from './items.js';
+
 export const passivesSystem = {
     'luck':     { name: 'Удача 🍀',     desc: 'Ходит раньше. 10% шанс ударить дважды!',              initBonus: 50,  dmgMult: 0.9, hpMult: 1,   healMult: 1,   incDmgMult: 1,   trigger: 'double_cast', chance: 0.10, fx: 'fx-doublecast' },
     'heavy':    { name: 'Тяжеловес 🛡️', desc: 'Урон +20%. 10% шанс заблокировать атаку!',            initBonus: -30, dmgMult: 1.2, hpMult: 1,   healMult: 1,   incDmgMult: 1,   trigger: 'block',       chance: 0.10, fx: 'fx-block' },
@@ -31,7 +33,7 @@ export const baseCharacters = [
 
     { id: 'c2', name: 'Добрыня', img: 'assets/dobrynya.png', passive: 'heavy', race: 'human', hp: 130, speed: 6, price: 100, skills: [
         { name: 'Укол копьем', icon: '🔱', dmg: 22, type: 'attack', cooldown: 0 },
-        { name: 'Стена щитов', icon: '🛡️', type: 'buff', cooldown: 3, desc: 'Дружине: -10% получаемого урона на 2 хода', buffTarget: 'ally', aoe: true, effects: [{ stat: 'defBuff', value: -0.10, turns: 2, dispellable: true }] },
+        { name: 'Стена щитов', icon: '🛡️', type: 'buff', cooldown: 3, desc: 'Дружине: -7% получаемого урона на 2 хода', buffTarget: 'ally', aoe: true, effects: [{ stat: 'defBuff', value: -0.07, turns: 2, dispellable: true }] },
         { name: 'Град ударов', icon: '🌪️', dmg: 52, type: 'attack', cooldown: 3 },
         { name: 'Сокрушающий вихрь', icon: '🌀', dmg: 85, type: 'attack', cooldown: 5, isUltimate: true }
     ], vfx: { color: '#7f8c8d', particle: '🌪️' } },
@@ -44,14 +46,14 @@ export const baseCharacters = [
     ], vfx: { color: '#f39c12', particle: '🎯' } },
 
     { id: 'c4', name: 'Снегурочка', img: 'assets/snegurochka.png', passive: 'healer', race: 'spirit', hp: 172, speed: 9, price: 150, skills: [
-        { name: 'Магия холода', icon: '🧊', dmg: 24, type: 'attack', cooldown: 0 },
+        { name: 'Магия холода', icon: '🧊', dmg: 28, type: 'attack', cooldown: 0 },
         { name: 'Ледяные оковы', icon: '❄️', type: 'buff', cooldown: 3, desc: 'Врагу: -25% урона на 2 хода', buffTarget: 'enemy', effects: [{ stat: 'dmgBuff', value: -0.25, turns: 2, dispellable: true }] },
         { name: 'Исцеление', icon: '❄️', dmg: -75, type: 'heal', cooldown: 3 },
         { name: 'Вечная зима', icon: '❄️', dmg: -125, type: 'heal', cooldown: 5, isUltimate: true }
     ], vfx: { color: '#5dade2', particle: '❄️' } },
 
     { id: 'c5', name: 'Баба Яга', img: 'assets/yaga.png', passive: 'luck', race: 'spirit', hp: 120, speed: 7, price: 150, skills: [
-        { name: 'Сглаз', icon: '👁️', dmg: 32, type: 'attack', cooldown: 0 },
+        { name: 'Сглаз', icon: '👁️', dmg: 36, type: 'attack', cooldown: 0 },
         { name: 'Снять чары', icon: '🔮', type: 'dispel', cooldown: 3, desc: 'Снимает бафы со всех врагов', dispelTarget: 'enemy', aoe: true },
         { name: 'Лечебный отвар', icon: '🍲', dmg: -60, type: 'heal', cooldown: 3 },
         { name: 'Проклятие судьбы', icon: '🔮', dmg: 105, type: 'attack', cooldown: 5, isUltimate: true }
@@ -101,7 +103,7 @@ export const baseCharacters = [
 
     { id: 'c12', name: 'Святогор', img: 'assets/svyatogor.png', passive: 'berserk', race: 'human', hp: 170, speed: 2, price: 400, skills: [
         { name: 'Тяжелый кулак', icon: '✊', dmg: 30, type: 'attack', cooldown: 0 },
-        { name: 'Каменная кожа', icon: '🗿', type: 'buff', cooldown: 3, desc: 'Себе: -18% получаемого урона на 2 хода', buffTarget: 'self', effects: [{ stat: 'defBuff', value: -0.18, turns: 2, dispellable: true }] },
+        { name: 'Каменная кожа', icon: '🗿', type: 'buff', cooldown: 3, desc: 'Себе: -14% получаемого урона на 2 хода', buffTarget: 'self', effects: [{ stat: 'defBuff', value: -0.14, turns: 2, dispellable: true }] },
         { name: 'Сокрушительный гнев', icon: '💥', dmg: 68, type: 'attack', cooldown: 4 },
         { name: 'Несокрушимость исполина', icon: '⚡', type: 'buff', cooldown: 5, isUltimate: true, desc: 'Себе: -35% получаемого урона на 2 хода (снять могут только дебаферы-«разрушители бафов»)', buffTarget: 'self', effects: [{ stat: 'defBuff', value: -0.35, turns: 2, dispellable: true }] }
     ], vfx: { color: '#e67e22', particle: '⚡' } },
@@ -128,7 +130,7 @@ export const baseCharacters = [
     ], vfx: { color: '#2ecc71', particle: '🌸' } }
 ];
 
-export function initHeroStats(char, isBot) {
+export function initHeroStats(char, isBot, weaponId = null) {
     const hero = JSON.parse(JSON.stringify(char));
     const p = passivesSystem[hero.passive];
     hero.isBot = isBot;
@@ -146,6 +148,11 @@ export function initHeroStats(char, isBot) {
     hero.passiveTrigger = p.trigger;
     hero.passiveChance = p.chance;
     hero.passiveFx = p.fx;
+
+    if (weaponId) {
+        const weapon = getWeaponById(weaponId);
+        applyWeaponEffect(hero, weapon);
+    }
 
     hero.currentCooldowns = {};
     const unlockSchedule = [1, 1, 2, 4]; // v1.03: 1-е и 2-е умения открыты сразу, 3-е - со 2-го хода, ульта - с 4-го

@@ -1,20 +1,24 @@
 import {
     state, currentProfile, allProfiles, loadProfile, createProfile,
     deleteProfile, buyHero, selectProfile, setDifficulty, redeemPromoCode,
-    buySkin, equipSkin
+    buySkin, equipSkin, addWeaponToInventory, equipWeapon, sellWeapon,
+    INVENTORY_CAPACITY, grantChestReward
 } from './state.js';
 import { baseCharacters, passivesSystem } from './characters.js';
 import { arenas } from './arenas.js';
-import { promoCodes, getSpecialCharacterById } from './promocodes.js';
+import { specialCharacters, getSpecialCharacterById, resolvePromoCode } from './promocodes.js';
 import { getSkinsForHero, getHeroImage } from './skins.js';
+import { weaponCatalog, getWeaponById, getRandomWeapon } from './items.js';
 import { startCombat, executeAction } from './combat.js';
 import { renderHeroDetails } from './ui.js';
 
-let screenAuth, screenMenu, screenBattle, screenArena, screenShop;
+let screenAuth, screenMenu, screenBattle, screenArena, screenShop, screenInventory;
 let selectedForStart = [];
 let selectedProfileIndex = null; // Какой профиль выделен в меню загрузки
 let selectedArenaId = 'field';
 let selectedAvatar = baseCharacters[0].img;
+let inventorySelectedHeroId = null;
+let inventorySelectedWeaponId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     screenAuth = document.getElementById('screen-auth');
@@ -22,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     screenBattle = document.getElementById('screen-battle');
     screenArena = document.getElementById('screen-arena');
     screenShop = document.getElementById('screen-shop');
+    screenInventory = document.getElementById('screen-inventory');
 
     initApp();
 
@@ -80,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-start-battle').onclick = () => {
         screenArena.style.display = 'none';
         screenBattle.style.display = 'block';
+        setTitleVisible(false);
         startCombat(selectedArenaId, currentProfile.difficulty);
     };
 
@@ -88,11 +94,37 @@ document.addEventListener('DOMContentLoaded', () => {
         showMenu();
     };
 
-    // Магазин - теперь отдельный экран с двумя вкладками
+    // Магазин - теперь отдельный экран с тремя вкладками
     document.getElementById('btn-goto-shop').onclick = () => showShop();
     document.getElementById('btn-shop-back').onclick = () => showMenu();
     document.getElementById('tab-shop-heroes').onclick = () => switchShopTab('heroes');
     document.getElementById('tab-shop-skins').onclick = () => switchShopTab('skins');
+    document.getElementById('tab-shop-chests').onclick = () => switchShopTab('chests');
+    document.getElementById('btn-buy-chest').onclick = () => {
+        const CHEST_PRICE = 100;
+        if (currentProfile.coins < CHEST_PRICE) { alert('Не хватает монет!'); return; }
+        if (!confirm(`Купить сундук с оружием за ${CHEST_PRICE} монет?`)) return;
+        currentProfile.coins -= CHEST_PRICE;
+        const weapon = getRandomWeapon();
+        const result = grantChestReward(weapon);
+        document.getElementById('ui-coins').innerText = currentProfile.coins;
+        if (result.type === 'coins') {
+            alert(`Инвентарь полон! Вместо оружия начислено ${result.amount} монет 💰`);
+        } else {
+            alert(`Сундук открыт! Получено оружие: ${weapon.icon} ${weapon.name}`);
+        }
+    };
+
+    // Инвентарь
+    document.getElementById('btn-goto-inventory').onclick = () => showInventory();
+    document.getElementById('btn-inventory-back').onclick = () => showMenu();
+
+    // Сундук после боя
+    document.getElementById('btn-chest-open').onclick = () => openPostBattleChest();
+    document.getElementById('btn-chest-continue').onclick = () => {
+        document.getElementById('chest-modal-backdrop').style.display = 'none';
+        if (window.__afterChestCallback) { window.__afterChestCallback(); window.__afterChestCallback = null; }
+    };
 
     // Промокод
     document.getElementById('btn-open-promo').onclick = () => openPromoModal();
@@ -103,11 +135,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+function setTitleVisible(visible) {
+    const el = document.getElementById('title-wrap');
+    if (el) el.style.display = visible ? 'block' : 'none';
+}
+
 function initApp() {
+    setTitleVisible(true);
+    // Сбрасываем состояние боя/дружины при каждом входе на экран профилей -
+    // иначе герой, выбранный в предыдущей сессии (другим профилем или до
+    // обновления страницы), мог "утекать" в новый профиль как лишний,
+    // невидимый в интерфейсе выбора, но появляющийся в бою 4-м бойцом.
+    state.playerTeam = [];
+    state.enemyTeam = [];
+    state.turnQueue = [];
     screenBattle.style.display = 'none';
     screenMenu.style.display = 'none';
     screenArena.style.display = 'none';
     screenShop.style.display = 'none';
+    screenInventory.style.display = 'none';
     screenAuth.style.display = 'block';
 
     if (loadProfile()) {
@@ -211,11 +257,13 @@ function renderAuthHeroes() {
 
 // Отрисовка дружины (магазин теперь на отдельном экране - см. showShop)
 export function showMenu() {
+    setTitleVisible(true);
     screenAuth.style.display = 'none';
     screenMenu.style.display = 'block';
     screenBattle.style.display = 'none';
     screenArena.style.display = 'none';
     screenShop.style.display = 'none';
+    screenInventory.style.display = 'none';
 
     document.getElementById('ui-coins-inline').innerText = currentProfile.coins;
     const stats = currentProfile.stats || { wins: 0, losses: 0, battles: 0 };
@@ -239,22 +287,29 @@ export function showMenu() {
 
     const ownedHeroes = baseCharacters.filter(c => currentProfile.unlockedHeroes.includes(c.id));
 
-    // Промо-герой (см. promocodes.js) - доступен как дополнительный слот на
-    // один ближайший бой, если промокод был активирован и ещё не потрачен.
-    const promoHero = currentProfile.pendingPromoHero
+    // Постоянно открытые спец-герои (например, Волколак через код ВОЛКОЛАК2) -
+    // хранятся в unlockedHeroes как обычные герои, но их данные лежат в
+    // specialCharacters, а не в baseCharacters, поэтому ищем отдельно.
+    const ownedSpecialHeroes = specialCharacters.filter(c => currentProfile.unlockedHeroes.includes(c.id));
+
+    // Промо-герой на ОДИН бой (см. promocodes.js) - показываем только если
+    // он ещё не открыт навсегда (иначе он уже есть в ownedSpecialHeroes).
+    const tempPromoHero = (currentProfile.pendingPromoHero && !currentProfile.unlockedHeroes.includes(currentProfile.pendingPromoHero.heroId))
         ? getSpecialCharacterById(currentProfile.pendingPromoHero.heroId)
         : null;
-    const rosterHeroes = promoHero ? [...ownedHeroes, promoHero] : ownedHeroes;
+
+    const rosterHeroes = [...ownedHeroes, ...ownedSpecialHeroes, ...(tempPromoHero ? [tempPromoHero] : [])];
 
     rosterHeroes.forEach(char => {
         const p = passivesSystem[char.passive];
         const card = document.createElement('div');
-        card.className = 'card hero-card' + (char.promoOnly ? ' promo-hero-slot' : '');
+        const isTempPromo = char === tempPromoHero;
+        card.className = 'card hero-card' + (isTempPromo ? ' promo-hero-slot' : '');
         card.innerHTML = `
             <div class="avatar" style="background-image: url('${getHeroImage(char, currentProfile)}');"></div>
             <b>${char.name}</b><br>
             <div class="passive-badge" title="${p.desc}">${p.name}</div>
-            ${char.promoOnly ? '<div class="promo-hero-tag">🎁 Промо · 1 бой</div>' : '<small style="display:block; margin-top:8px;">Ваш боец</small>'}
+            ${isTempPromo ? '<div class="promo-hero-tag">🎁 Промо · 1 бой</div>' : '<small style="display:block; margin-top:8px;">Ваш боец</small>'}
         `;
         if (previouslySelectedIds.includes(char.id) && state.playerTeam.length < 3) {
             state.playerTeam.push(char);
@@ -292,8 +347,10 @@ function showShop() {
 function switchShopTab(tab) {
     document.getElementById('tab-shop-heroes').classList.toggle('active', tab === 'heroes');
     document.getElementById('tab-shop-skins').classList.toggle('active', tab === 'skins');
+    document.getElementById('tab-shop-chests').classList.toggle('active', tab === 'chests');
     document.getElementById('shop-heroes-panel').style.display = tab === 'heroes' ? 'block' : 'none';
     document.getElementById('shop-skins-panel').style.display = tab === 'skins' ? 'block' : 'none';
+    document.getElementById('shop-chests-panel').style.display = tab === 'chests' ? 'block' : 'none';
     renderHeroDetails(document.getElementById('shop-hero-details'), null);
 }
 
@@ -417,6 +474,168 @@ function showArenaScreen() {
     });
 }
 
+// --------------------------- Инвентарь (v1.04) ---------------------------
+function getOwnedRoster() {
+    const ownedHeroes = baseCharacters.filter(c => currentProfile.unlockedHeroes.includes(c.id));
+    const ownedSpecialHeroes = specialCharacters.filter(c => currentProfile.unlockedHeroes.includes(c.id));
+    return [...ownedHeroes, ...ownedSpecialHeroes];
+}
+
+function showInventory() {
+    screenMenu.style.display = 'none';
+    screenInventory.style.display = 'block';
+
+    const roster = getOwnedRoster();
+    if (!inventorySelectedHeroId || !roster.some(h => h.id === inventorySelectedHeroId)) {
+        inventorySelectedHeroId = roster.length ? roster[0].id : null;
+    }
+
+    const pickerContainer = document.getElementById('inventory-hero-picker');
+    pickerContainer.innerHTML = '';
+    roster.forEach(char => {
+        const div = document.createElement('div');
+        div.className = 'inventory-hero-thumb' + (char.id === inventorySelectedHeroId ? ' selected' : '');
+        div.style.backgroundImage = `url('${getHeroImage(char, currentProfile)}')`;
+        div.title = char.name;
+        div.onclick = () => { inventorySelectedHeroId = char.id; inventorySelectedWeaponId = null; showInventory(); };
+        pickerContainer.appendChild(div);
+    });
+
+    renderInventoryActiveHero(roster);
+    renderWeaponGrid();
+    renderWeaponDetails(roster);
+}
+
+function renderInventoryActiveHero(roster) {
+    const container = document.getElementById('inventory-active-hero');
+    const hero = roster.find(h => h.id === inventorySelectedHeroId);
+    if (!hero) {
+        container.innerHTML = '<p style="color:#95a5a6;">Сначала откройте хотя бы одного героя.</p>';
+        return;
+    }
+    const equippedId = currentProfile.equippedWeapons[hero.id];
+    const weapon = equippedId ? getWeaponById(equippedId) : null;
+    container.innerHTML = `
+        <div class="inventory-active-row">
+            <div class="inventory-weapon-slot ${weapon ? 'filled' : ''}" id="inventory-weapon-slot" title="${weapon ? weapon.name : 'Оружие не надето - выберите его снизу'}">
+                ${weapon ? weapon.icon : '+'}
+            </div>
+            <div class="inventory-hero-portrait" style="background-image:url('${getHeroImage(hero, currentProfile)}')"></div>
+        </div>
+        <b class="inventory-hero-name">${hero.name}</b>
+    `;
+    document.getElementById('inventory-weapon-slot').onclick = () => {
+        if (weapon) { inventorySelectedWeaponId = weapon.id; renderWeaponDetails(roster); }
+    };
+}
+
+function renderWeaponGrid() {
+    const container = document.getElementById('weapon-grid');
+    container.innerHTML = '';
+
+    const totalCounts = {};
+    currentProfile.inventory.forEach(id => { totalCounts[id] = (totalCounts[id] || 0) + 1; });
+    const equippedCounts = {};
+    Object.values(currentProfile.equippedWeapons).forEach(id => {
+        if (id) equippedCounts[id] = (equippedCounts[id] || 0) + 1;
+    });
+
+    // Оружие, надетое на героя, "перемещается" из общего инвентаря в его
+    // слот - здесь показываем только СВОБОДНЫЕ (не надетые ни на кого) копии.
+    const availableIds = Object.keys(totalCounts).filter(id => (totalCounts[id] - (equippedCounts[id] || 0)) > 0);
+
+    for (let i = 0; i < INVENTORY_CAPACITY; i++) {
+        const weaponId = availableIds[i];
+        const div = document.createElement('div');
+
+        if (!weaponId) {
+            div.className = 'weapon-slot-item empty';
+            container.appendChild(div);
+            continue;
+        }
+
+        const weapon = getWeaponById(weaponId);
+        if (!weapon) continue;
+        const availableCount = totalCounts[weaponId] - (equippedCounts[weaponId] || 0);
+        div.className = 'weapon-slot-item' + (inventorySelectedWeaponId === weaponId ? ' selected' : '');
+        div.innerHTML = weapon.icon + (availableCount > 1 ? `<span class="weapon-count-badge">x${availableCount}</span>` : '');
+        div.title = weapon.name;
+        div.onclick = () => { inventorySelectedWeaponId = weaponId; showInventory(); };
+        container.appendChild(div);
+    }
+}
+
+function renderWeaponDetails(roster) {
+    const container = document.getElementById('weapon-details');
+    const hero = roster.find(h => h.id === inventorySelectedHeroId);
+    if (!inventorySelectedWeaponId || !hero) { container.style.display = 'none'; return; }
+    const weapon = getWeaponById(inventorySelectedWeaponId);
+    if (!weapon) { container.style.display = 'none'; return; }
+
+    const isEquippedOnActive = currentProfile.equippedWeapons[hero.id] === weapon.id;
+    const effectLabel = { dmg: 'урон', def: 'получаемый урон (меньше = лучше)', heal: 'лечение' };
+    let bonusText = '';
+    if (weapon.bonusFor === hero.id && weapon.bonusEffect) {
+        const sameStat = weapon.bonusEffect.stat === weapon.baseEffect.stat;
+        const bonusPct = `${weapon.bonusEffect.value > 0 ? '+' : ''}${Math.round(weapon.bonusEffect.value * 100)}% ${effectLabel[weapon.bonusEffect.stat]}`;
+        bonusText = sameStat
+            ? `<br>✨ Родное оружие для ${hero.name} — дополнительно ${bonusPct} (итого ${Math.round((weapon.baseEffect.value + weapon.bonusEffect.value) * 100)}% ${effectLabel[weapon.baseEffect.stat]})!`
+            : `<br>✨ Родное оружие для ${hero.name} — дополнительный эффект: ${bonusPct}!`;
+    } else if (weapon.bonusFor) {
+        bonusText = `<br><span style="color:#95a5a6;">Родное оружие другого героя — у ${hero.name} действует только базовый эффект.</span>`;
+    }
+
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div style="font-size:40px;">${weapon.icon}</div>
+        <b>${weapon.name}</b>
+        <div class="weapon-effects">
+            Базовый эффект: ${weapon.baseEffect.value > 0 ? '+' : ''}${Math.round(weapon.baseEffect.value * 100)}% ${effectLabel[weapon.baseEffect.stat]}
+            ${bonusText}
+        </div>
+        <div class="weapon-details-actions">
+            ${isEquippedOnActive ? `<button id="btn-weapon-unequip">Снять</button>` : `<button id="btn-weapon-equip">Надеть на ${hero.name}</button>`}
+            <button id="btn-weapon-sell" class="danger-btn">Продать за ${weapon.sellPrice} 💰</button>
+        </div>
+    `;
+
+    if (isEquippedOnActive) {
+        document.getElementById('btn-weapon-unequip').onclick = () => { equipWeapon(hero.id, null); showInventory(); };
+    } else {
+        document.getElementById('btn-weapon-equip').onclick = () => { equipWeapon(hero.id, weapon.id); showInventory(); };
+    }
+    document.getElementById('btn-weapon-sell').onclick = () => {
+        if (confirm(`Продать «${weapon.name}» за ${weapon.sellPrice} монет?`)) {
+            sellWeapon(weapon.id, weapon.sellPrice);
+            inventorySelectedWeaponId = null;
+            showInventory();
+        }
+    };
+}
+
+// --------------------------- Сундук после боя (v1.04) ---------------------------
+function openPostBattleChest() {
+    const weapon = getRandomWeapon();
+    const result = grantChestReward(weapon);
+    document.getElementById('chest-stage-closed').style.display = 'none';
+    document.getElementById('chest-stage-result').style.display = 'block';
+    if (result.type === 'coins') {
+        document.getElementById('chest-result-icon').textContent = '💰';
+        document.getElementById('chest-result-name').textContent = `Инвентарь полон — начислено ${result.amount} монет`;
+    } else {
+        document.getElementById('chest-result-icon').textContent = weapon.icon;
+        document.getElementById('chest-result-name').textContent = weapon.name;
+    }
+}
+
+/** Вызывается из combat.js после каждого боя. onDone - что делать после закрытия (обычно showMenu). */
+export function showPostBattleChest(onDone) {
+    document.getElementById('chest-stage-closed').style.display = 'block';
+    document.getElementById('chest-stage-result').style.display = 'none';
+    document.getElementById('chest-modal-backdrop').style.display = 'flex';
+    window.__afterChestCallback = onDone;
+}
+
 // --------------------------- Промокод ---------------------------
 function openPromoModal() {
     document.getElementById('promo-input').value = '';
@@ -430,16 +649,19 @@ function closePromoModal() {
     document.getElementById('promo-modal-backdrop').style.display = 'none';
 }
 
-function submitPromoCode() {
+async function submitPromoCode() {
     const value = document.getElementById('promo-input').value;
-    const result = redeemPromoCode(value, promoCodes);
+    const btn = document.getElementById('btn-promo-submit');
+    btn.disabled = true;
+    const result = await redeemPromoCode(value, resolvePromoCode);
+    btn.disabled = false;
     const msgEl = document.getElementById('promo-message');
     msgEl.textContent = result.message;
     msgEl.className = 'promo-message ' + (result.ok ? 'success' : 'error');
     if (result.ok) {
         setTimeout(() => {
             closePromoModal();
-            showMenu(); // перерисовать дружину, чтобы показать новый промо-слот
+            showMenu(); // перерисовать дружину, чтобы показать нового/постоянного героя
         }, 1200);
     }
 }

@@ -9,7 +9,7 @@
 <body>
     <div class="version-badge">v1.03</div>
 
-    <div class="title-wrap">
+    <div class="title-wrap" id="title-wrap">
         <img src="assets/title_logo.png" alt="Битва Богатырей: Легенды Руси" class="game-title-img">
     </div>
 
@@ -59,12 +59,25 @@
         <div class="menu-actions" style="margin-top: 20px; margin-bottom: 20px;">
             <button id="btn-battle" class="primary-btn" disabled>В бой!</button>
             <br>
+            <button id="btn-goto-inventory" style="margin-top: 12px; background:#8e44ad;">🎒 Инвентарь</button>
+            <br>
             <button id="btn-goto-shop" style="margin-top: 12px; background:#16a085;">🛒 Магазин героев (<span id="ui-coins-inline">0</span> 💰)</button>
             <br>
             <button id="btn-open-promo" class="promo-btn">🎁 Ввести промокод</button>
         </div>
 
         <button id="btn-logout" class="danger-btn" style="margin-top: 10px;">Сменить профиль</button>
+    </div>
+
+    <!-- 2.1 ЭКРАН ИНВЕНТАРЯ -->
+    <div id="screen-inventory" class="screen" style="display: none;">
+        <h2 class="squad-title">Инвентарь</h2>
+        <div id="inventory-hero-picker" class="inventory-hero-picker"></div>
+        <div id="inventory-active-hero" class="inventory-active-hero"></div>
+        <h3>Оружие в инвентаре</h3>
+        <div id="weapon-grid" class="weapon-grid"></div>
+        <div id="weapon-details" class="weapon-details-panel" style="display:none;"></div>
+        <button id="btn-inventory-back" class="danger-btn" style="margin-top: 10px;">Назад в дружину</button>
     </div>
 
     <!-- 2.2 ОТДЕЛЬНЫЙ ЭКРАН МАГАЗИНА -->
@@ -76,6 +89,7 @@
         <div class="shop-tabs">
             <button id="tab-shop-heroes" class="shop-tab active">🧑‍🤝‍🧑 Герои</button>
             <button id="tab-shop-skins" class="shop-tab">🎨 Образы</button>
+            <button id="tab-shop-chests" class="shop-tab">🎁 Сундуки</button>
         </div>
         <div id="shop-heroes-panel">
             <div id="ui-shop-heroes" class="heroes-grid"></div>
@@ -83,6 +97,14 @@
         <div id="shop-skins-panel" style="display:none;">
             <p class="skins-hint">Образы можно купить только для уже открытых героев. Экипировка/снятие — бесплатно и в любой момент.</p>
             <div id="ui-shop-skins" class="heroes-grid"></div>
+        </div>
+        <div id="shop-chests-panel" style="display:none;">
+            <p class="skins-hint">Сундук с оружием — случайное оружие для вашей дружины. Открывается сразу после покупки.</p>
+            <div style="text-align:center;">
+                <img src="assets/chest_weapon.png" alt="🎁" class="chest-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <div class="chest-icon" style="display:none;">🎁</div>
+                <button id="btn-buy-chest" class="primary-btn">Купить сундук за 100 💰</button>
+            </div>
         </div>
         <div id="shop-hero-details" class="hero-details-panel"></div>
         <button id="btn-shop-back" class="danger-btn" style="margin-top: 20px;">Назад в дружину</button>
@@ -114,11 +136,6 @@
 
     <!-- 3. ЭКРАН БОЯ -->
     <div id="screen-battle" class="screen arena-bg-field" style="display: none;">
-        <div class="battlefield-header">
-            <span class="team-label mine">🛡️ Ваша дружина</span>
-            <span class="vs-divider">VS</span>
-            <span class="team-label enemy">⚔️ Противник</span>
-        </div>
         <h2 id="turn-indicator">Ходит: ...</h2>
         <p><span id="arena-label"></span> · Время на ход: <span id="timer-display">60</span> сек</p>
 
@@ -130,6 +147,25 @@
         <div id="skills-container" class="skills"></div>
         <button id="execute-btn" disabled>Атаковать</button>
         <div id="combat-log"></div>
+    </div>
+
+    <!-- 2.6 СУНДУК С ОРУЖИЕМ (после боя / покупка в магазине) -->
+    <div id="chest-modal-backdrop" class="promo-modal-backdrop" style="display: none;">
+        <div class="promo-modal chest-modal">
+            <div id="chest-stage-closed">
+                <img src="assets/chest_weapon.png" alt="🎁" class="chest-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <div class="chest-icon" style="display:none;">🎁</div>
+                <h3>Сундук с оружием!</h3>
+                <p class="skins-hint">Внутри — случайное оружие для вашей дружины.</p>
+                <button id="btn-chest-open" class="primary-btn">Открыть</button>
+            </div>
+            <div id="chest-stage-result" style="display:none;">
+                <div id="chest-result-icon" class="chest-icon"></div>
+                <h3 id="chest-result-name"></h3>
+                <p class="skins-hint">Добавлено в инвентарь. Экипировать можно на экране «Инвентарь».</p>
+                <button id="btn-chest-continue" class="primary-btn">Продолжить</button>
+            </div>
+        </div>
     </div>
 
     <script type="module" src="js/main.js"></script>

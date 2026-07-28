@@ -5,6 +5,7 @@ import {
     applyStatusEffects, applySkillDot,
     addBuff, tickBuffs, getBuffValue, hasBuff, dispelBuffs
 } from '../js/engine.js';
+import { applyWeaponEffect } from '../js/items.js';
 
 function makeFighter(overrides = {}) {
     return {
@@ -213,5 +214,30 @@ describe('addBuff + tickBuffs (бафы/дебафы v1.03)', () => {
         tickBuffs(owner);
         tickBuffs(owner);
         expect(hasBuff(owner, 'companion')).toBe(true);
+    });
+});
+
+describe('applyWeaponEffect (оружие v1.04)', () => {
+    it('применяет базовый эффект оружия к любому герою', () => {
+        const hero = makeFighter({ id: 'c99', dmgMult: 1 });
+        const weapon = { id: 'test_sword', baseEffect: { stat: 'dmg', value: 0.1 }, bonusFor: 'c1' };
+        applyWeaponEffect(hero, weapon);
+        expect(hero.dmgMult).toBeCloseTo(1.1);
+    });
+
+    it('добавляет дополнительный бонус, только если оружие "родное" для этого героя', () => {
+        const owner = makeFighter({ id: 'c1', dmgMult: 1 });
+        const stranger = makeFighter({ id: 'c2', dmgMult: 1 });
+        const weapon = { id: 'test_sword', baseEffect: { stat: 'dmg', value: 0.1 }, bonusFor: 'c1', bonusEffect: { stat: 'dmg', value: 0.2 } };
+        applyWeaponEffect(owner, weapon);
+        applyWeaponEffect(stranger, weapon);
+        expect(owner.dmgMult).toBeCloseTo(1.32); // 1 * 1.1 * 1.2
+        expect(stranger.dmgMult).toBeCloseTo(1.1); // только базовый эффект
+    });
+
+    it('ничего не делает, если оружие не передано', () => {
+        const hero = makeFighter({ dmgMult: 1 });
+        applyWeaponEffect(hero, null);
+        expect(hero.dmgMult).toBe(1);
     });
 });

@@ -73,7 +73,12 @@ export function chooseBotAction(activeChar, allies, enemies, arena, difficulty =
         const pool = attackSkills.length ? attackSkills : availableSkills;
         const skill = pool[Math.floor(Math.random() * pool.length)];
         if (skill.type === 'heal') return { skill, target: weakestAlly || pickLowestHpPercent(aliveEnemies) };
-        if (skill.type === 'attack') return { skill, target: pickLowestHpPercent(aliveEnemies) };
+        if (skill.type === 'attack') {
+            // Не всегда бьём самого слабого - иначе бот выглядит как
+            // "убивает по очереди". С шансом 45% цель случайная.
+            const target = Math.random() < 0.55 ? pickLowestHpPercent(aliveEnemies) : aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+            return { skill, target };
+        }
         const target = pickDefaultTarget(skill, activeChar, aliveAllies, aliveEnemies);
         return target ? { skill, target } : { skill: availableSkills[0], target: aliveEnemies[0] };
     }

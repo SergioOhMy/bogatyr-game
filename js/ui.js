@@ -1,6 +1,7 @@
 import { state, currentProfile } from './state.js';
 import { passivesSystem } from './characters.js';
 import { getHeroImage } from './skins.js';
+import { getWeaponById } from './items.js';
 
 export function log(msg) {
     const logDiv = document.getElementById('combat-log');
@@ -17,8 +18,11 @@ export function renderBattlefield(onTargetSelect) {
     // элементы переиспользуются, а не сносятся на каждый рендер.
     const currentIds = new Set([...state.playerTeam, ...state.enemyTeam].map(c => c.id));
     [pDiv, eDiv].forEach(container => {
-        Array.from(container.children).forEach(child => {
+        Array.from(container.querySelectorAll('.fighter')).forEach(child => {
             if (!currentIds.has(child.dataset.charId)) child.remove();
+        });
+        Array.from(container.querySelectorAll('.companion-card')).forEach(child => {
+            if (!currentIds.has(child.dataset.companionOwner)) child.remove();
         });
     });
 
@@ -53,9 +57,9 @@ export function renderBattlefield(onTargetSelect) {
         el.classList.toggle('selected-target-enemy', isSelected && !isAlly);
 
         let skullHtml = isDead ? `<div class="skull-overlay">💀</div>` : '';
-        const buffIcons = { dmgBuff: '⚔️', defBuff: '🛡️', evasive: '💨', blind: '😵', stun: '💫', companion: '👥' };
-        const buffsHtml = (char.buffs || []).map(b =>
-            `<span class="buff-badge" title="${b.stat}: ${b.turnsLeft} х.">${(b.meta && b.meta.icon) || buffIcons[b.stat] || '✨'}</span>`
+        const buffIcons = { dmgBuff: '⚔️', defBuff: '🛡️', evasive: '💨', blind: '😵', stun: '💫' };
+        const buffsHtml = (char.buffs || []).filter(b => b.stat !== 'companion').map(b =>
+            `<span class="buff-badge" title="${b.stat}: ${b.turnsLeft} х.">${buffIcons[b.stat] || '✨'}</span>`
         ).join('');
 
         // Заменяем содержимое ТОЛЬКО через вложенный .fighter-content, а не
@@ -73,31 +77,61 @@ export function renderBattlefield(onTargetSelect) {
             <div class="avatar" style="background-image: url('${getHeroImage(char, currentProfile)}');"></div>
             <div class="stats">
                 <b>${char.name}</b> <small>(${char.hp}/${char.maxHp})</small>
-                <div class="passive-info">${char.passiveName}</div>
-                ${buffsHtml ? `<div class="buffs-row">${buffsHtml}</div>` : ''}
+                <div class="passive-info">${char.passiveName}${char.equippedWeapon ? ` · ${char.equippedWeapon.icon} ${char.equippedWeapon.name}` : ''}</div>
+                <div class="buffs-row">${buffsHtml}</div>
                 <div class="hp-bar-bg"><div class="hp-bar-fill" style="width: ${hpPercent}%; background: ${hpPercent < 30 ? '#e74c3c' : '#2ecc71'}"></div></div>
             </div>`;
     };
 
-    state.playerTeam.forEach(c => renderChar(c, pDiv));
-    state.enemyTeam.forEach(c => renderChar(c, eDiv));
+    // Призванный спутник (Кощей/Леший) - см. combat.js -> startTurn, буфф
+    // 'companion'. Раньше был виден только маленьким значком в buffs-row -
+    // теперь дополнительно рисуем отдельную компактную карточку сразу под
+    // хозяином, чтобы его реально было видно на поле боя, как просили.
+    const renderCompanion = (char, div) => {
+        const companionBuff = char.buffs && char.buffs.find(b => b.stat === 'companion');
+        let compEl = div.querySelector(`.companion-card[data-companion-owner="${char.id}"]`);
+
+        if (!companionBuff) {
+            if (compEl) compEl.remove();
+            return;
+        }
+
+        if (!compEl) {
+            compEl = document.createElement('div');
+            compEl.className = 'companion-card';
+            compEl.dataset.companionOwner = char.id;
+        }
+        const meta = companionBuff.meta || { icon: '👥', label: 'Спутник' };
+        compEl.innerHTML = `<span class="companion-icon">${meta.icon}</span><span class="companion-label">${meta.label} <small>(с ${char.name})</small></span>`;
+
+        const ownerEl = div.querySelector(`.fighter[data-char-id="${char.id}"]`);
+        if (ownerEl && ownerEl.nextElementSibling !== compEl) {
+            ownerEl.insertAdjacentElement('afterend', compEl);
+        } else if (!compEl.parentNode) {
+            div.appendChild(compEl);
+        }
+    };
+
+    state.playerTeam.forEach(c => { renderChar(c, pDiv); renderCompanion(c, pDiv); });
+    state.enemyTeam.forEach(c => { renderChar(c, eDiv); renderCompanion(c, eDiv); });
 }
 
 export function renderSkills(char, onSkillSelect) {
     const container = document.getElementById('skills-container');
     container.innerHTML = '';
 
-    if (char.isBot) {
-        container.innerHTML = '<p style="color:#bdc3c7;">Противник принимает решение...</p>';
-        return;
-    }
+    // ВАЖНО: раньше на ходу бота сюда вставлялась одна строка текста вместо
+    // сетки из 4 кнопок - высота блока резко менялась туда-сюда при каждой
+    // смене игрок/бот, из-за чего лог боя ниже "прыгал". Теперь сетка всегда
+    // одной и той же высоты: на ходу бота его умения просто показываются
+    // затемнёнными и неактивными.
 
     char.skills.forEach(skill => {
         let btn = document.createElement('button');
         const turnsUntilUnlock = skill.unlockTurn - char.turnsTaken;
         const isLocked = turnsUntilUnlock > 0;
         const isSpecial = skill.type === 'buff' || skill.type === 'dispel' || skill.type === 'summon';
-        btn.className = 'skill-btn' + (skill.isUltimate ? ' ultimate-btn' : '') + (isLocked ? ' skill-locked' : '') + (isSpecial ? ' special-btn' : '');
+        btn.className = 'skill-btn' + (skill.isUltimate ? ' ultimate-btn' : '') + (isLocked ? ' skill-locked' : '') + (isSpecial ? ' special-btn' : '') + (char.isBot ? ' skill-btn-bot' : '');
         if (state.selectedSkill === skill) btn.classList.add('selected-skill');
 
         let cdLeft = char.currentCooldowns[skill.name];
@@ -121,7 +155,9 @@ export function renderSkills(char, onSkillSelect) {
 
         let innerHtml = `<div><span>${skill.icon}</span> <b>${displayName}</b>${skill.isUltimate ? ' <span class="ult-tag">ULT</span>' : ''}${skill.aoe ? ' <span class="ult-tag">ВСЕ</span>' : ''}</div> ${displayLine}`;
 
-        if (isLocked) {
+        if (char.isBot) {
+            btn.disabled = true;
+        } else if (isLocked) {
             innerHtml += `<br><small style="color: #95a5a6;">Откроется через ${turnsUntilUnlock} ход(а)</small>`;
             btn.disabled = true;
         } else if (cdLeft > 0) {
@@ -130,7 +166,7 @@ export function renderSkills(char, onSkillSelect) {
         }
 
         btn.innerHTML = innerHtml;
-        if (!isLocked && cdLeft === 0) btn.onclick = () => onSkillSelect(skill, btn);
+        if (!char.isBot && !isLocked && cdLeft === 0) btn.onclick = () => onSkillSelect(skill, btn);
         container.appendChild(btn);
     });
 }
@@ -182,6 +218,29 @@ export function renderHeroDetails(container, char) {
     const ultimate = char.skills.find(s => s.isUltimate);
     const raceLabel = { human: 'Человек', undead: 'Нежить', spirit: 'Дух', beast: 'Тварь' }[char.race] || char.race;
 
+    const equippedWeaponId = currentProfile && currentProfile.equippedWeapons ? currentProfile.equippedWeapons[char.id] : null;
+    const weapon = equippedWeaponId ? getWeaponById(equippedWeaponId) : null;
+    const weaponEffectLabel = { dmg: 'урон', def: 'получаемый урон', heal: 'лечение' };
+    let weaponBonusPart = '';
+    if (weapon && weapon.bonusFor === char.id && weapon.bonusEffect) {
+        const sameStat = weapon.bonusEffect.stat === weapon.baseEffect.stat;
+        weaponBonusPart = sameStat
+            ? ` <span class="weapon-bonus-tag">✨ родное: +${Math.round(weapon.bonusEffect.value * 100)}%, итого ${Math.round((weapon.baseEffect.value + weapon.bonusEffect.value) * 100)}%</span>`
+            : ` <span class="weapon-bonus-tag">✨ родное: ещё ${weapon.bonusEffect.value > 0 ? '+' : ''}${Math.round(weapon.bonusEffect.value * 100)}% ${weaponEffectLabel[weapon.bonusEffect.stat]}</span>`;
+    }
+    const weaponLine = weapon
+        ? `<div class="detail-weapon">${weapon.icon} <b>${weapon.name}</b> — ${weapon.baseEffect.value > 0 ? '+' : ''}${Math.round(weapon.baseEffect.value * 100)}% ${weaponEffectLabel[weapon.baseEffect.stat]}${weaponBonusPart}</div>`
+        : `<div class="detail-weapon detail-weapon-empty">Оружие не надето</div>`;
+
+    let ultimateLine = '';
+    if (ultimate) {
+        if (ultimate.type === 'attack' || ultimate.type === 'heal') {
+            ultimateLine = `${ultimate.icon} <b>${ultimate.name}</b> — ~${Math.abs(ultimate.dmg)} ${ultimate.type === 'heal' ? 'лечения' : 'урона'} (откат ${ultimate.cooldown} х.)`;
+        } else {
+            ultimateLine = `${ultimate.icon} <b>${ultimate.name}</b> — ${ultimate.desc || ''} (откат ${ultimate.cooldown} х.)`;
+        }
+    }
+
     container.innerHTML = `
         <div class="hero-details-card">
             <div class="details-avatar" style="background-image: url('${getHeroImage(char, currentProfile)}');"></div>
@@ -193,8 +252,9 @@ export function renderHeroDetails(container, char) {
                     <div class="detail-stat">🗡️ Средний урон: <b>~${avgAttackDmg}</b></div>
                     <div class="detail-stat">💰 Цена: <b>${char.price}</b></div>
                 </div>
+                ${weaponLine}
                 <div class="detail-passive" title="${p.desc}">${p.name} — ${p.desc}</div>
-                ${ultimate ? `<div class="detail-ultimate">${ultimate.icon} <b>${ultimate.name}</b> — ~${Math.abs(ultimate.dmg)} ${ultimate.type === 'heal' ? 'лечения' : 'урона'} (откат ${ultimate.cooldown} х.)</div>` : ''}
+                ${ultimateLine ? `<div class="detail-ultimate">${ultimateLine}</div>` : ''}
             </div>
         </div>
     `;
@@ -243,6 +303,12 @@ export function playHitFx(target, { crit = false, amount = 0 } = {}) {
     const el = findFighterEl(target);
     playCssFx(el, crit ? 'fx-crit' : 'hit-shake', crit ? 650 : 400);
     spawnFloatingText(el, `-${amount}`, crit ? 'crit' : 'dmg');
+    if (crit) {
+        document.body.classList.remove('screen-shake');
+        void document.body.offsetWidth;
+        document.body.classList.add('screen-shake');
+        setTimeout(() => document.body.classList.remove('screen-shake'), 400);
+    }
 }
 
 export function playMissFx(target) {
@@ -277,6 +343,7 @@ export function playRegenFx(target, amount) {
 export function playDoubleCastFx(attacker) {
     const el = findFighterEl(attacker);
     playCssFx(el, 'fx-doublecast', 500);
+    spawnFloatingText(el, '🍀 Удача!', 'doublecast');
 }
 
 export function playDeathFx(target) {
@@ -304,6 +371,16 @@ export function playUltimateFx(attacker, target) {
 export function playBuffFx(target, { positive = true } = {}) {
     const el = findFighterEl(target);
     playCssFx(el, positive ? 'fx-buff-positive' : 'fx-buff-negative', 550);
+}
+
+/** Короткая вспышка на мини-карточке спутника, когда он бьёт врага (см. combat.js -> startTurn). */
+export function pulseCompanion(ownerCharId) {
+    const compEl = document.querySelector(`.companion-card[data-companion-owner="${ownerCharId}"]`);
+    if (!compEl) return;
+    compEl.classList.remove('pulse');
+    void compEl.offsetWidth;
+    compEl.classList.add('pulse');
+    setTimeout(() => compEl.classList.remove('pulse'), 500);
 }
 
 function hexToRgba(hex, alpha) {
