@@ -2,26 +2,38 @@ import { state, winBattle, recordLoss, clearPendingPromoHero, currentProfile, DI
 import { showMenu, showPostBattleChest } from './main.js';
 import { initHeroStats, baseCharacters } from './characters.js';
 import {
-    log, renderBattlefield, renderSkills, checkActionState,
+    log, clearLog, renderBattlefield, renderSkills, checkActionState,
     playHitFx, playMissFx, playDodgeFx, playBlockFx,
     playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx, playBuffFx, pulseCompanion
 } from './ui.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
     applyStatusEffects, applySkillDot,
-    tickBuffs, hasBuff, addBuff, dispelBuffs
+    tickBuffs, hasBuff, addBuff, dispelBuffs, shuffle
 } from './engine.js';
 import { getArenaById } from './arenas.js';
 import { chooseBotAction } from './bot.js';
 import { getRandomWeapon } from './items.js';
+
+/** Сколько секунд даётся игроку на ход (боты ходят сами через 1.5 сек). */
+const TURN_SECONDS = 60;
+
+/**
+ * Включает картинку арены на фоновом слое (arenaId) или гасит её (null),
+ * когда игрок уходит с экрана боя.
+ */
+export function setArenaBackdrop(arenaId) {
+    const backdrop = document.getElementById('arena-backdrop');
+    if (backdrop) backdrop.className = arenaId ? `arena-backdrop arena-bg-${arenaId}` : 'arena-backdrop';
+}
 
 export function startCombat(arenaId, difficulty) {
     state.currentArena = getArenaById(arenaId);
     state.difficulty = difficulty || 'normal';
     state.playerSkipStreak = 0;
 
-    let remaining = baseCharacters.filter(c => !state.playerTeam.some(p => p.id === c.id));
-    let shuffledBots = remaining.sort(() => 0.5 - Math.random()).slice(0, 3);
+    const remaining = baseCharacters.filter(c => !state.playerTeam.some(p => p.id === c.id));
+    const shuffledBots = shuffle(remaining).slice(0, 3);
 
     state.enemyTeam = shuffledBots.map(c => initHeroStats(c, true, Math.random() < 0.8 ? getRandomWeapon().id : null));
     state.playerTeam = state.playerTeam.map(c => initHeroStats(c, false, (currentProfile.equippedWeapons || {})[c.id] || null));
@@ -39,13 +51,18 @@ export function startCombat(arenaId, difficulty) {
     if (underdogFirstActor) underdogFirstActor.underdogBuff = true;
 
     const battleScreen = document.getElementById('screen-battle');
-    battleScreen.className = `screen arena-bg-${state.currentArena.id}`;
     battleScreen.dataset.arenaIcon = state.currentArena.icon;
+    // Картинку арены включает отдельный фоновый слой (см. index.html / style.css),
+    // сам экран боя её больше не несёт — иначе фон ездил при смене высоты.
+    setArenaBackdrop(state.currentArena.id);
 
     const arenaLabel = document.getElementById('arena-label');
     if (arenaLabel) arenaLabel.textContent = `${state.currentArena.icon} ${state.currentArena.name}`;
 
     renderBattlefield(onTargetSelect);
+    // Лог накапливался от боя к бою: новая партия дописывалась под старой,
+    // и через несколько боёв подряд игрок открывал бой уже с чужой историей.
+    clearLog();
     log(`<b>${state.currentArena.icon} Арена: ${state.currentArena.name}.</b> ${state.currentArena.desc}`);
     if (underdogFirstActor) {
         log(`🌀 <b>${underdogFirstActor.name}</b> входит в бой вторым и получает "Внезапный натиск": +15% к следующему действию.`);
@@ -130,14 +147,20 @@ export function startTurn() {
 
     activeChar.turnsTaken++;
     tickCooldowns(activeChar);
-    tickBuffs(activeChar);
 
-    // Оглушение (stun): пропускаем ход целиком, эффект уже снят тиком выше
+    // Оглушение (stun): пропускаем ход целиком.
+    // ВАЖНО: проверяем ДО tickBuffs. Раньше сначала шёл тик, и оглушение с
+    // turns: 1 успевало истечь и быть удалённым ровно к тому моменту, когда
+    // его собирались проверить — механика не срабатывала вообще ни разу.
+    // Теперь тикаем уже внутри ветки, чтобы оглушение съело ровно один ход.
     if (hasBuff(activeChar, 'stun')) {
+        tickBuffs(activeChar);
         log(`💫 <b>${activeChar.name}</b> оглушён и пропускает ход!`);
+        renderBattlefield(onTargetSelect);
         nextTurn();
         return;
     }
+    tickBuffs(activeChar);
 
     // Эффект начала хода: сперва арена (лечение нежити в болоте и т.п.),
     // затем яд/ожог от навыков (см. characters.js -> skill.dot)
@@ -207,8 +230,18 @@ export function startTurn() {
     renderBattlefield(onTargetSelect);
     renderSkills(activeChar, onSkillSelect);
 
-    state.timeLeft = 60;
+    state.timeLeft = TURN_SECONDS;
     document.getElementById('timer-display').innerText = state.timeLeft;
+
+    // Таймер тикает ТОЛЬКО на ходу живого игрока. Раньше он запускался и на
+    // ходу бота: бот обычно успевал за 1.5 сек, но если бы его ход по любой
+    // причине затянулся (исключение в логике, зависшая анимация), через 60
+    // секунд срабатывал handleTurnTimeout и поражение за "пропуск хода"
+    // засчитывалось игроку — за ход, которого он не делал.
+    if (activeChar.isBot) {
+        setTimeout(botLogic, 1500);
+        return;
+    }
 
     state.timerInterval = setInterval(() => {
         state.timeLeft--;
@@ -218,8 +251,6 @@ export function startTurn() {
             handleTurnTimeout(activeChar);
         }
     }, 1000);
-
-    if (activeChar.isBot) setTimeout(botLogic, 1500);
 }
 
 // Пропуск хода по таймеру (только у игрока - боты действуют раньше 60 сек):
@@ -357,6 +388,10 @@ function executeBuffOrDispelAction(attacker, skill, target) {
     }
 
     log(`${skill.icon} <b>${attacker.name}</b> применяет <i>${skill.name}</i>!`);
+    // Ульта Святогора - единственная ульта типа "баф", и её фирменная анимация
+    // раньше не проигрывалась вообще: playUltimateFx вызывался только в ветках
+    // атаки/лечения и в aoe.
+    if (skill.isUltimate) playUltimateFx(attacker, targets[0] || attacker);
 
     if (skill.type === 'buff') {
         targets.forEach(t => {

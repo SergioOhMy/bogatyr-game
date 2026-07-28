@@ -1,12 +1,25 @@
 import { state, currentProfile } from './state.js';
-import { passivesSystem } from './characters.js';
+import { passivesSystem, initHeroStats } from './characters.js';
 import { getHeroImage } from './skins.js';
 import { getWeaponById } from './items.js';
 
+// Сколько строк лога держим в DOM. Длинный бой на "сложной" сложности легко
+// набирает несколько сотен строк, а лог никогда не чистился в пределах боя -
+// на слабом телефоне это заметно подтормаживало прокрутку к концу боя.
+const LOG_MAX_LINES = 200;
+
 export function log(msg) {
     const logDiv = document.getElementById('combat-log');
-    logDiv.innerHTML += `<div>${msg}</div>`;
+    const line = document.createElement('div');
+    line.innerHTML = msg;
+    logDiv.appendChild(line);
+    while (logDiv.childElementCount > LOG_MAX_LINES) logDiv.removeChild(logDiv.firstElementChild);
     logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+/** Очищает лог боя. Вызывается при старте боя (см. combat.js -> startCombat). */
+export function clearLog() {
+    document.getElementById('combat-log').innerHTML = '';
 }
 
 export function renderBattlefield(onTargetSelect) {
@@ -57,9 +70,28 @@ export function renderBattlefield(onTargetSelect) {
         el.classList.toggle('selected-target-enemy', isSelected && !isAlly);
 
         let skullHtml = isDead ? `<div class="skull-overlay">💀</div>` : '';
+
+        // Бейджи активных эффектов. Раньше здесь показывались только бафы, а яд
+        // и ожог (skill.dot у Алёши и Горыныча) не отображались нигде вообще -
+        // игрок видел, что теряет HP в начале хода, но не понимал причину и не
+        // мог посчитать, доживёт ли боец. Теперь DOT показан рядом с бафами,
+        // с подписью "сколько ХП за ход и сколько ходов осталось".
+        const buffLabels = {
+            dmgBuff:  b => `${b.value > 0 ? 'Урон +' : 'Урон '}${Math.round(b.value * 100)}%`,
+            defBuff:  b => `Получаемый урон ${Math.round(b.value * 100)}%`,
+            evasive:  b => `Уворот +${Math.round(b.value * 100)}%`,
+            blind:    b => `Промах +${Math.round(b.value * 100)}%`,
+            stun:     () => 'Оглушение'
+        };
         const buffIcons = { dmgBuff: '⚔️', defBuff: '🛡️', evasive: '💨', blind: '😵', stun: '💫' };
-        const buffsHtml = (char.buffs || []).filter(b => b.stat !== 'companion').map(b =>
-            `<span class="buff-badge" title="${b.stat}: ${b.turnsLeft} х.">${buffIcons[b.stat] || '✨'}</span>`
+        const buffsHtml = (char.buffs || []).filter(b => b.stat !== 'companion').map(b => {
+            const label = buffLabels[b.stat] ? buffLabels[b.stat](b) : b.stat;
+            return `<span class="buff-badge" title="${label} — осталось ходов: ${b.turnsLeft}">${buffIcons[b.stat] || '✨'}</span>`;
+        }).join('');
+
+        const dotIcons = { poison: '☠️', burn: '🔥' };
+        const dotsHtml = (char.statusEffects || []).map(e =>
+            `<span class="buff-badge dot-badge" title="${e.type === 'burn' ? 'Ожог' : 'Яд'}: −${e.amountPerTurn} ХП за ход, осталось ходов: ${e.turnsLeft}">${dotIcons[e.type] || '☠️'}</span>`
         ).join('');
 
         // Заменяем содержимое ТОЛЬКО через вложенный .fighter-content, а не
@@ -78,7 +110,7 @@ export function renderBattlefield(onTargetSelect) {
             <div class="stats">
                 <b>${char.name}</b> <small>(${char.hp}/${char.maxHp})</small>
                 <div class="passive-info">${char.passiveName}${char.equippedWeapon ? ` · ${char.equippedWeapon.icon} ${char.equippedWeapon.name}` : ''}</div>
-                <div class="buffs-row">${buffsHtml}</div>
+                <div class="buffs-row">${buffsHtml}${dotsHtml}</div>
                 <div class="hp-bar-bg"><div class="hp-bar-fill" style="width: ${hpPercent}%; background: ${hpPercent < 30 ? '#e74c3c' : '#2ecc71'}"></div></div>
             </div>`;
     };
@@ -261,6 +293,90 @@ export function renderHeroDetails(container, char) {
 }
 
 // ---------------------------------------------------------------------------
+// Полная сводка характеристик героя для экрана инвентаря: показывает всё, что
+// вообще есть у бойца, и рядом — что из этого меняет надетое оружие.
+//
+// Цифры НЕ пересчитываются здесь вручную: оба варианта героя (без оружия и с
+// ним) прогоняются через тот же initHeroStats, что и перед настоящим боем.
+// Так значения в инвентаре гарантированно совпадают с боевыми, а не расходятся
+// при следующей правке формул.
+// ---------------------------------------------------------------------------
+export function renderInventoryHeroStats(container, char, weaponId) {
+    if (!char) { container.innerHTML = ''; return; }
+
+    const bare = initHeroStats(char, false, null);
+    const armed = initHeroStats(char, false, weaponId || null);
+    const weapon = weaponId ? getWeaponById(weaponId) : null;
+    const p = passivesSystem[char.passive];
+    const raceLabel = { human: 'Человек', undead: 'Нежить', spirit: 'Дух', beast: 'Тварь' }[char.race] || char.race;
+
+    const pct = v => `${Math.round(v * 100)}%`;
+    const signedPct = v => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
+
+    // Строка сравнения: если оружие ничего не меняет — показываем одно значение.
+    const row = (label, bareVal, armedVal, betterWhenLower = false) => {
+        const changed = bareVal !== armedVal;
+        if (!changed) return `<tr><td>${label}</td><td colspan="2" class="stat-same">${bareVal}</td></tr>`;
+        const bareNum = parseFloat(String(bareVal));
+        const armedNum = parseFloat(String(armedVal));
+        const improved = betterWhenLower ? armedNum < bareNum : armedNum > bareNum;
+        return `<tr>
+            <td>${label}</td>
+            <td class="stat-bare">${bareVal}</td>
+            <td class="stat-armed ${improved ? 'stat-up' : 'stat-down'}">${armedVal} ${improved ? '▲' : '▼'}</td>
+        </tr>`;
+    };
+
+    const skillRows = armed.skills.map((s, i) => {
+        const bareSkill = bare.skills[i];
+        const isDamage = s.type === 'attack';
+        const isHeal = s.type === 'heal';
+        if (!isDamage && !isHeal) {
+            return `<tr><td>${s.icon} ${s.name}</td><td colspan="2" class="stat-same">${s.desc || '—'}</td></tr>`;
+        }
+        const calc = (hero, skill) => Math.round(Math.abs(skill.dmg) * (isHeal ? hero.healMult : hero.dmgMult));
+        const label = `${s.icon} ${s.name}${s.isUltimate ? ' <span class="ult-tag">ULT</span>' : ''}${s.aoe ? ' <span class="ult-tag">ВСЕ</span>' : ''}`;
+        return row(`${label}<br><small>${isHeal ? 'лечение' : 'урон'}, откат ${s.cooldown} х., открыв. с ${s.unlockTurn} хода</small>`,
+            calc(bare, bareSkill), calc(armed, s), false);
+    }).join('');
+
+    const effectLabel = { dmg: 'урон', def: 'получаемый урон', heal: 'лечение' };
+    let weaponBlock;
+    if (!weapon) {
+        weaponBlock = `<div class="stats-weapon-line stats-weapon-empty">Оружие не надето — в таблице ниже базовые характеристики героя.</div>`;
+    } else {
+        const isNative = weapon.bonusFor === char.id;
+        let parts = `Базовый эффект: <b>${signedPct(weapon.baseEffect.value)} ${effectLabel[weapon.baseEffect.stat]}</b>`;
+        if (isNative && weapon.bonusEffect) {
+            parts += `<br>✨ <b>Родное оружие для ${char.name}</b> — дополнительно ${signedPct(weapon.bonusEffect.value)} ${effectLabel[weapon.bonusEffect.stat]}`;
+        } else if (weapon.bonusFor) {
+            parts += `<br><span class="stats-weapon-foreign">Родное оружие другого героя — здесь работает только базовый эффект.</span>`;
+        }
+        weaponBlock = `<div class="stats-weapon-line">${weapon.icon} <b>${weapon.name}</b><br>${parts}</div>`;
+    }
+
+    container.innerHTML = `
+        <h3 class="stats-title">Характеристики: ${char.name}</h3>
+        ${weaponBlock}
+        <table class="hero-stats-table">
+            <thead><tr><th>Характеристика</th><th>Без оружия</th><th>С оружием</th></tr></thead>
+            <tbody>
+                ${row('❤️ Здоровье', bare.maxHp, armed.maxHp)}
+                ${row('⚡ Скорость', bare.speed, armed.speed)}
+                ${row('🎲 Инициатива', bare.initiativeScore, armed.initiativeScore)}
+                ${row('🗡️ Множитель урона', pct(bare.dmgMult), pct(armed.dmgMult))}
+                ${row('💚 Множитель лечения', pct(bare.healMult), pct(armed.healMult))}
+                ${row('🛡️ Получаемый урон', pct(bare.incDmgMult), pct(armed.incDmgMult), true)}
+                <tr><td>🧬 Раса</td><td colspan="2" class="stat-same">${raceLabel}</td></tr>
+                <tr><td>✨ Пассивка</td><td colspan="2" class="stat-same">${p.name} — ${p.desc}</td></tr>
+                <tr class="stats-section"><td colspan="3">Умения</td></tr>
+                ${skillRows}
+            </tbody>
+        </table>
+    `;
+}
+
+// ---------------------------------------------------------------------------
 // Анимации боя. Все функции работают с уже отрисованным DOM-элементом бойца
 // (ищем через data-char-id), проигрывают CSS-класс и сами убирают его по
 // окончании анимации, чтобы её можно было запускать повторно.
@@ -304,10 +420,16 @@ export function playHitFx(target, { crit = false, amount = 0 } = {}) {
     playCssFx(el, crit ? 'fx-crit' : 'hit-shake', crit ? 650 : 400);
     spawnFloatingText(el, `-${amount}`, crit ? 'crit' : 'dmg');
     if (crit) {
-        document.body.classList.remove('screen-shake');
-        void document.body.offsetWidth;
-        document.body.classList.add('screen-shake');
-        setTimeout(() => document.body.classList.remove('screen-shake'), 400);
+        // Трясём именно экран боя, а не <body>. Трансформация на body сделала бы
+        // его containing block для position: fixed, и неподвижный фоновый слой
+        // арены (см. index.html -> #arena-backdrop) на время тряски прыгал бы
+        // вместе с ней и перемасштабировался.
+        const screen = document.getElementById('screen-battle');
+        if (!screen) return;
+        screen.classList.remove('screen-shake');
+        void screen.offsetWidth;
+        screen.classList.add('screen-shake');
+        setTimeout(() => screen.classList.remove('screen-shake'), 400);
     }
 }
 

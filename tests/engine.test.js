@@ -3,7 +3,8 @@ import {
     computeAttackDamage, computeHealAmount, tickCooldowns,
     buildTurnQueue, resolveAction, rollChance,
     applyStatusEffects, applySkillDot,
-    addBuff, tickBuffs, getBuffValue, hasBuff, dispelBuffs
+    addBuff, tickBuffs, getBuffValue, hasBuff, dispelBuffs,
+    shuffle, pickRandom, BUFF_LIMITS, MAX_AVOID_CHANCE
 } from '../js/engine.js';
 import { applyWeaponEffect } from '../js/items.js';
 
@@ -214,6 +215,102 @@ describe('addBuff + tickBuffs (бафы/дебафы v1.03)', () => {
         tickBuffs(owner);
         tickBuffs(owner);
         expect(hasBuff(owner, 'companion')).toBe(true);
+    });
+});
+
+describe('shuffle (честное перемешивание)', () => {
+    it('не теряет и не дублирует элементы, не мутирует исходный массив', () => {
+        const source = [1, 2, 3, 4, 5, 6, 7, 8];
+        const result = shuffle(source);
+        expect([...result].sort((a, b) => a - b)).toEqual(source);
+        expect(source).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    });
+
+    it('распределяет элементы по позициям равномерно (регрессия: sort(() => 0.5 - random) был смещён)', () => {
+        // Считаем, сколько раз каждый из 6 элементов попал в первую тройку -
+        // именно так симулятор набирает команду A. У смещённой сортировки
+        // элемент с индексом 0 оказывался там заметно чаще остальных
+        // (в отчёте это выглядело как 10109 появлений против 6529).
+        const items = [0, 1, 2, 3, 4, 5];
+        const firstHalfCounts = new Array(6).fill(0);
+        const RUNS = 60000;
+        for (let i = 0; i < RUNS; i++) {
+            shuffle(items).slice(0, 3).forEach(v => firstHalfCounts[v]++);
+        }
+        const expected = RUNS / 2; // каждый элемент ожидаемо в половине случаев
+        firstHalfCounts.forEach(count => {
+            expect(Math.abs(count - expected) / expected).toBeLessThan(0.03);
+        });
+    });
+
+    it('детерминирован при подставленном rng', () => {
+        const rng = () => 0; // всегда меняем местами с элементом 0
+        expect(shuffle(['a', 'b', 'c'], rng)).toEqual(['b', 'c', 'a']);
+    });
+});
+
+describe('pickRandom', () => {
+    it('возвращает элемент массива', () => {
+        expect(['a', 'b', 'c']).toContain(pickRandom(['a', 'b', 'c']));
+    });
+    it('возвращает null для пустого массива и для undefined', () => {
+        expect(pickRandom([])).toBe(null);
+        expect(pickRandom(undefined)).toBe(null);
+    });
+});
+
+describe('потолки бафов (BUFF_LIMITS)', () => {
+    it('суммарный defBuff не опускается ниже потолка, даже если сложить пять щитов', () => {
+        const target = makeFighter();
+        [-0.07, -0.18, -0.20, -0.14, -0.35].forEach(v => addBuff(target, { stat: 'defBuff', value: v, turns: 5 }));
+        // Без клампа сумма была бы -0.94 (то есть -94% получаемого урона)
+        expect(getBuffValue(target, 'defBuff')).toBe(BUFF_LIMITS.defBuff.min);
+    });
+
+    it('кламп реально влияет на итоговый урон', () => {
+        const attacker = makeFighter();
+        const target = makeFighter();
+        [-0.5, -0.5, -0.5].forEach(v => addBuff(target, { stat: 'defBuff', value: v, turns: 5 }));
+        // -1.5 без клампа дало бы отрицательный урон, срезанный до 1
+        expect(computeAttackDamage({ dmg: 100, type: 'attack' }, attacker, target)).toBe(30);
+    });
+
+    it('суммарный dmgBuff ограничен сверху', () => {
+        const attacker = makeFighter();
+        [0.5, 0.5, 0.5, 0.5].forEach(v => addBuff(attacker, { stat: 'dmgBuff', value: v, turns: 5 }));
+        expect(getBuffValue(attacker, 'dmgBuff')).toBe(BUFF_LIMITS.dmgBuff.max);
+    });
+
+    it('шанс уворота не достигает 100% даже при огромном evasive (регрессия: Колобок был неуязвим ход)', () => {
+        const attacker = makeFighter();
+        const target = makeFighter({ passiveTrigger: 'dodge', passiveChance: 0.16 });
+        addBuff(target, { stat: 'evasive', value: 0.90, turns: 1 });
+        // rng чуть выше потолка - атака обязана пройти
+        const result = resolveAction({ attacker, target, skill: { dmg: 30, type: 'attack' }, rng: () => MAX_AVOID_CHANCE + 0.01 });
+        expect(result.dodged).toBe(false);
+        expect(result.amount).toBeGreaterThan(0);
+    });
+});
+
+describe('время жизни самобафов', () => {
+    // Регрессия: бафы тикают в начале хода своего носителя, поэтому
+    // наступательный самобаф с turns: 1 списывался ДО того, как герой успевал
+    // ударить - "Меткий глаз" Алёши и "Волчий инстинкт" Волколака не работали
+    // вообще ни разу. Наступательные самобафы обязаны иметь turns >= 2.
+    it('turns: 1 не доживает до собственной атаки носителя', () => {
+        const hero = makeFighter();
+        addBuff(hero, { stat: 'dmgBuff', value: 0.5, turns: 1 });
+        tickBuffs(hero); // начало следующего хода носителя
+        expect(getBuffValue(hero, 'dmgBuff')).toBe(0);
+    });
+
+    it('turns: 2 доживает ровно до одной атаки носителя и снимается после неё', () => {
+        const hero = makeFighter();
+        addBuff(hero, { stat: 'dmgBuff', value: 0.5, turns: 2 });
+        tickBuffs(hero);
+        expect(getBuffValue(hero, 'dmgBuff')).toBe(0.5);
+        tickBuffs(hero);
+        expect(getBuffValue(hero, 'dmgBuff')).toBe(0);
     });
 });
 

@@ -9,8 +9,8 @@ import { arenas } from './arenas.js';
 import { specialCharacters, getSpecialCharacterById, resolvePromoCode } from './promocodes.js';
 import { getSkinsForHero, getHeroImage } from './skins.js';
 import { weaponCatalog, getWeaponById, getRandomWeapon } from './items.js';
-import { startCombat, executeAction } from './combat.js';
-import { renderHeroDetails } from './ui.js';
+import { startCombat, executeAction, setArenaBackdrop } from './combat.js';
+import { renderHeroDetails, renderInventoryHeroStats } from './ui.js';
 
 let screenAuth, screenMenu, screenBattle, screenArena, screenShop, screenInventory;
 let selectedForStart = [];
@@ -118,6 +118,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Инвентарь
     document.getElementById('btn-goto-inventory').onclick = () => showInventory();
     document.getElementById('btn-inventory-back').onclick = () => showMenu();
+    document.getElementById('btn-weapon-picker-cancel').onclick = () => closeWeaponPicker();
+    document.getElementById('weapon-picker-backdrop').onclick = (e) => {
+        if (e.target.id === 'weapon-picker-backdrop') closeWeaponPicker();
+    };
 
     // Сундук после боя
     document.getElementById('btn-chest-open').onclick = () => openPostBattleChest();
@@ -142,6 +146,7 @@ function setTitleVisible(visible) {
 
 function initApp() {
     setTitleVisible(true);
+    setArenaBackdrop(null); // гасим фон арены вне боя
     // Сбрасываем состояние боя/дружины при каждом входе на экран профилей -
     // иначе герой, выбранный в предыдущей сессии (другим профилем или до
     // обновления страницы), мог "утекать" в новый профиль как лишний,
@@ -258,6 +263,7 @@ function renderAuthHeroes() {
 // Отрисовка дружины (магазин теперь на отдельном экране - см. showShop)
 export function showMenu() {
     setTitleVisible(true);
+    setArenaBackdrop(null); // гасим фон арены вне боя
     screenAuth.style.display = 'none';
     screenMenu.style.display = 'block';
     screenBattle.style.display = 'none';
@@ -504,6 +510,11 @@ function showInventory() {
     renderInventoryActiveHero(roster);
     renderWeaponGrid();
     renderWeaponDetails(roster);
+    renderInventoryHeroStats(
+        document.getElementById('inventory-hero-stats'),
+        roster.find(h => h.id === inventorySelectedHeroId) || null,
+        currentProfile.equippedWeapons[inventorySelectedHeroId] || null
+    );
 }
 
 function renderInventoryActiveHero(roster) {
@@ -517,16 +528,79 @@ function renderInventoryActiveHero(roster) {
     const weapon = equippedId ? getWeaponById(equippedId) : null;
     container.innerHTML = `
         <div class="inventory-active-row">
-            <div class="inventory-weapon-slot ${weapon ? 'filled' : ''}" id="inventory-weapon-slot" title="${weapon ? weapon.name : 'Оружие не надето - выберите его снизу'}">
+            <div class="inventory-weapon-slot ${weapon ? 'filled' : ''}" id="inventory-weapon-slot"
+                 title="${weapon ? `${weapon.name} — нажмите, чтобы сменить или снять` : 'Нажмите, чтобы выбрать оружие'}">
                 ${weapon ? weapon.icon : '+'}
             </div>
             <div class="inventory-hero-portrait" style="background-image:url('${getHeroImage(hero, currentProfile)}')"></div>
         </div>
         <b class="inventory-hero-name">${hero.name}</b>
+        <small class="inventory-slot-hint">${weapon ? 'Нажмите на оружие, чтобы сменить или снять' : 'Нажмите на «+», чтобы надеть оружие'}</small>
     `;
-    document.getElementById('inventory-weapon-slot').onclick = () => {
-        if (weapon) { inventorySelectedWeaponId = weapon.id; renderWeaponDetails(roster); }
+    // Слот кликабелен ВСЕГДА. Раньше обработчик срабатывал только при уже
+    // надетом оружии, поэтому "+" на пустом слоте выглядел как кнопка, но
+    // не делал ничего — именно на это и жаловались.
+    document.getElementById('inventory-weapon-slot').onclick = () => openWeaponPicker(hero);
+}
+
+// --------------------- Выбор оружия в слот героя ---------------------
+/** Свободные (не надетые ни на кого) копии оружия: id -> сколько штук. */
+function getFreeWeaponCounts() {
+    const total = {};
+    currentProfile.inventory.forEach(id => { total[id] = (total[id] || 0) + 1; });
+    Object.values(currentProfile.equippedWeapons).forEach(id => {
+        if (id && total[id]) total[id]--;
+    });
+    return total;
+}
+
+function openWeaponPicker(hero) {
+    const backdrop = document.getElementById('weapon-picker-backdrop');
+    const grid = document.getElementById('weapon-picker-grid');
+    const emptyHint = document.getElementById('weapon-picker-empty');
+    const unequipBtn = document.getElementById('btn-weapon-picker-unequip');
+
+    document.getElementById('weapon-picker-title').textContent = `Оружие для: ${hero.name}`;
+    grid.innerHTML = '';
+
+    const equippedId = currentProfile.equippedWeapons[hero.id] || null;
+    const freeCounts = getFreeWeaponCounts();
+    const freeIds = Object.keys(freeCounts).filter(id => freeCounts[id] > 0);
+
+    freeIds.forEach(id => {
+        const weapon = getWeaponById(id);
+        if (!weapon) return;
+        const isNative = weapon.bonusFor === hero.id;
+        const card = document.createElement('div');
+        card.className = 'weapon-picker-item' + (isNative ? ' native' : '');
+        card.innerHTML = `
+            <div class="weapon-picker-icon">${weapon.icon}</div>
+            <b>${weapon.name}</b>
+            ${freeCounts[id] > 1 ? `<small>свободно: ${freeCounts[id]}</small>` : ''}
+            ${isNative ? '<div class="weapon-picker-native">✨ родное</div>' : ''}
+        `;
+        card.onclick = () => {
+            equipWeapon(hero.id, id);
+            closeWeaponPicker();
+            inventorySelectedWeaponId = id;
+            showInventory();
+        };
+        grid.appendChild(card);
+    });
+
+    emptyHint.style.display = freeIds.length ? 'none' : 'block';
+    unequipBtn.style.display = equippedId ? 'inline-block' : 'none';
+    unequipBtn.onclick = () => {
+        equipWeapon(hero.id, null);
+        closeWeaponPicker();
+        showInventory();
     };
+
+    backdrop.style.display = 'flex';
+}
+
+function closeWeaponPicker() {
+    document.getElementById('weapon-picker-backdrop').style.display = 'none';
 }
 
 function renderWeaponGrid() {

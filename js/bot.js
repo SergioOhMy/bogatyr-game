@@ -11,7 +11,7 @@
 // противника. Подходит и для боя в браузере, и для симуляции в
 // scripts/balance-sim.js.
 
-import { computeAttackDamage, hasBuff } from './engine.js';
+import { computeAttackDamage, hasBuff, pickRandom } from './engine.js';
 
 function pickLowestHpPercent(list) {
     return [...list].sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
@@ -51,32 +51,28 @@ export function chooseBotAction(activeChar, allies, enemies, arena, difficulty =
     const weakestAlly = aliveAllies.length ? pickLowestHpPercent(aliveAllies) : null;
 
     if (difficulty === 'easy') {
-        const skill = availableSkills[Math.floor(Math.random() * availableSkills.length)];
+        const skill = pickRandom(availableSkills);
         if (skill.type === 'heal') return { skill, target: pickLowestHpPercent(aliveAllies) };
-        if (skill.type === 'attack') {
-            return { skill, target: aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)] };
-        }
+        if (skill.type === 'attack') return { skill, target: pickRandom(aliveEnemies) };
         const target = pickDefaultTarget(skill, activeChar, aliveAllies, aliveEnemies);
         return target ? { skill, target } : null;
     }
 
     if (difficulty === 'normal') {
         if (specialSkills.length && Math.random() < 0.35) {
-            const skill = specialSkills[Math.floor(Math.random() * specialSkills.length)];
+            const skill = pickRandom(specialSkills);
             const target = pickDefaultTarget(skill, activeChar, aliveAllies, aliveEnemies);
             if (target) return { skill, target };
         }
         if (healSkills.length && weakestAlly && (weakestAlly.hp / weakestAlly.maxHp) < 0.4 && Math.random() < 0.6) {
-            const skill = healSkills[Math.floor(Math.random() * healSkills.length)];
-            return { skill, target: weakestAlly };
+            return { skill: pickRandom(healSkills), target: weakestAlly };
         }
-        const pool = attackSkills.length ? attackSkills : availableSkills;
-        const skill = pool[Math.floor(Math.random() * pool.length)];
+        const skill = pickRandom(attackSkills.length ? attackSkills : availableSkills);
         if (skill.type === 'heal') return { skill, target: weakestAlly || pickLowestHpPercent(aliveEnemies) };
         if (skill.type === 'attack') {
             // Не всегда бьём самого слабого - иначе бот выглядит как
             // "убивает по очереди". С шансом 45% цель случайная.
-            const target = Math.random() < 0.55 ? pickLowestHpPercent(aliveEnemies) : aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+            const target = Math.random() < 0.55 ? pickLowestHpPercent(aliveEnemies) : pickRandom(aliveEnemies);
             return { skill, target };
         }
         const target = pickDefaultTarget(skill, activeChar, aliveAllies, aliveEnemies);
@@ -124,7 +120,7 @@ export function chooseBotAction(activeChar, allies, enemies, arena, difficulty =
 
     // 6. Полезный баф/дебаф, если есть под рукой и ничего срочнее нет
     if (specialSkills.length && Math.random() < 0.5) {
-        const skill = specialSkills[Math.floor(Math.random() * specialSkills.length)];
+        const skill = pickRandom(specialSkills);
         const target = pickDefaultTarget(skill, activeChar, aliveAllies, aliveEnemies);
         if (target) return { skill, target };
     }

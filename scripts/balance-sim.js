@@ -15,13 +15,17 @@ import { getRandomWeapon } from '../js/items.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
     applyStatusEffects, applySkillDot,
-    tickBuffs, hasBuff, addBuff, dispelBuffs
+    tickBuffs, hasBuff, addBuff, dispelBuffs, shuffle, pickRandom
 } from '../js/engine.js';
 import { writeFileSync } from 'fs';
 
-const ITERATIONS = 20000;
+// Число итераций можно переопределить аргументом: node scripts/balance-sim.js 5000
+const ITERATIONS = Number(process.argv[2]) || 20000;
 const MAX_TURNS = 250;
 const DIFFICULTY = 'hard';
+// Отчёт пишем только при полном прогоне - чтобы быстрые прикидки на 2-3 тысячах
+// боёв не перезатирали balance-report.md шумными числами.
+const WRITE_REPORT = process.argv[3] !== '--no-write' && ITERATIONS >= 20000;
 
 function applySingleResult(result) {
     if (result.missed || result.dodged || result.blocked) return;
@@ -90,13 +94,18 @@ function runOneBattle(teamAIds, teamBIds, arena) {
 
         active.turnsTaken++;
         tickCooldowns(active);
+
+        // Оглушение проверяем ДО tickBuffs - как и в combat.js (см. там подробный
+        // комментарий: иначе stun с turns: 1 истекает раньше, чем проверяется).
+        if (hasBuff(active, 'stun')) {
+            tickBuffs(active);
+            continue;
+        }
         tickBuffs(active);
 
         const isTeamA = teamA.includes(active);
         const allies = isTeamA ? teamA : teamB;
         const enemies = isTeamA ? teamB : teamA;
-
-        if (hasBuff(active, 'stun')) continue; // оглушён - пропускает ход
 
         const arenaEffect = applyArenaTurnStart(active, arena);
         if (arenaEffect) {
@@ -148,41 +157,63 @@ function runOneBattle(teamAIds, teamBIds, arena) {
 
 function main() {
     const wins = {};
+    const decided = {};   // бои героя, закончившиеся победой или поражением (без ничьих)
     const appearances = {};
-    baseCharacters.forEach(c => { wins[c.id] = 0; appearances[c.id] = 0; });
+    baseCharacters.forEach(c => { wins[c.id] = 0; decided[c.id] = 0; appearances[c.id] = 0; });
+    let draws = 0;
 
     for (let i = 0; i < ITERATIONS; i++) {
-        const shuffled = [...baseCharacters].sort(() => 0.5 - Math.random());
+        const shuffled = shuffle(baseCharacters);
         const teamAIds = shuffled.slice(0, 3).map(c => c.id);
         const teamBIds = shuffled.slice(3, 6).map(c => c.id);
-        const arena = arenas[Math.floor(Math.random() * arenas.length)];
+        const arena = pickRandom(arenas);
 
         teamAIds.forEach(id => appearances[id]++);
         teamBIds.forEach(id => appearances[id]++);
 
         const { winner } = runOneBattle(teamAIds, teamBIds, arena);
-        if (winner === 'A') teamAIds.forEach(id => wins[id]++);
-        if (winner === 'B') teamBIds.forEach(id => wins[id]++);
+        if (winner === 'draw') { draws++; continue; }
+
+        // Ничьи (упёрлись в MAX_TURNS) в винрейт не засчитываем ни одной
+        // стороне - иначе средний винрейт по всем героям систематически
+        // оказывался ниже 50% просто из-за них, и было непонятно, это
+        // перекос баланса или артефакт подсчёта.
+        [...teamAIds, ...teamBIds].forEach(id => decided[id]++);
+        const winners = winner === 'A' ? teamAIds : teamBIds;
+        winners.forEach(id => wins[id]++);
     }
 
     const rows = baseCharacters.map(c => {
-        const app = appearances[c.id] || 1;
-        const winRate = (wins[c.id] / app * 100).toFixed(1);
-        return { name: c.name, price: c.price, appearances: app, winRate: parseFloat(winRate) };
+        const played = decided[c.id] || 1;
+        return {
+            name: c.name, price: c.price,
+            appearances: appearances[c.id],
+            winRate: parseFloat((wins[c.id] / played * 100).toFixed(1))
+        };
     }).sort((a, b) => b.winRate - a.winRate);
 
-    let md = `# Отчёт по балансу v1.03 (симуляция бот-vs-бот, сложность "${DIFFICULTY}")\n\n`;
+    const avg = rows.reduce((s, r) => s + r.winRate, 0) / rows.length;
+    const spread = rows[0].winRate - rows[rows.length - 1].winRate;
+
+    let md = `# Отчёт по балансу (симуляция бот-vs-бот, сложность "${DIFFICULTY}")\n\n`;
     md += `Итераций: ${ITERATIONS}, случайные команды 3v3 из ${baseCharacters.length} героев, случайная арена на каждый бой. `;
     md += `Учитывает прогрессивное открытие умений, DOT, массовые умения, бафы/дебафы, dispel и призыв спутника.\n\n`;
+    md += `Команды набираются честным перемешиванием (Фишер–Йетс), ничьи (${draws}, ${(draws / ITERATIONS * 100).toFixed(1)}%) `;
+    md += `в винрейт не засчитываются — поэтому средний винрейт сходится ровно к 50%.\n\n`;
     md += `| Герой | Цена | Появлений | Винрейт |\n|---|---|---|---|\n`;
     rows.forEach(r => {
         md += `| ${r.name} | ${r.price} 💰 | ${r.appearances} | ${r.winRate}% |\n`;
     });
+    md += `\nСредний винрейт: ${avg.toFixed(1)}%. Разброс между лучшим и худшим героем: ${spread.toFixed(1)} п.п.\n`;
 
-    const avg = rows.reduce((s, r) => s + r.winRate, 0) / rows.length;
-    md += `\nСредний винрейт по всем героям: ${avg.toFixed(1)}% (в идеале ~50%).\n`;
+    // Погрешность: без неё легко начать «чинить» разницу, которой на самом деле нет.
+    const avgBattles = rows.reduce((s, r) => s + r.appearances, 0) / rows.length;
+    const stdErr = Math.sqrt(0.25 / avgBattles) * 100;
+    md += `\n_Каждый герой сыграл около ${Math.round(avgBattles)} боёв, стандартная ошибка ≈ ${stdErr.toFixed(2)} п.п., `;
+    md += `то есть доверительный интервал каждой строки примерно ±${(stdErr * 2).toFixed(1)} п.п. `;
+    md += `Разницу меньше этой величины значимой считать не стоит._\n`;
 
-    writeFileSync(new URL('../balance-report.md', import.meta.url), md);
+    if (WRITE_REPORT) writeFileSync(new URL('../balance-report.md', import.meta.url), md);
     console.log(md);
 }
 

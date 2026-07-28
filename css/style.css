@@ -2,9 +2,7 @@
 html, body { width: 100%; }
 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #2c3e50; color: white; margin: 0; padding: 20px; overflow-x: hidden; }
 .screen { display: none; width: 100%; max-width: 900px; margin: 0 auto; padding: 20px; text-align: center; }
-.active-screen { display: block; }
 
-.grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 20px; }
 .card { background: #34495e; border: 3px solid #7f8c8d; border-radius: 10px; padding: 10px; width: 130px; cursor: pointer; transition: 0.2s; position: relative; }
 .card:hover { border-color: #f1c40f; }
 .card.selected { border-color: #2ecc71; background: #27ae60; }
@@ -38,16 +36,30 @@ button:disabled { background: #7f8c8d; cursor: not-allowed; }
 .hp-bar-fill { background: #2ecc71; height: 100%; width: 100%; transition: 0.3s; }
 .passive-info { font-size: 10px; color: #bdc3c7; margin-top: 2px; }
 
-.ui-panel { background: #1abc9c; padding: 15px; border-radius: 10px; margin-top: 20px; }
 .skills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; margin-bottom: 15px; }
-.skill-btn { background: #16a085; font-size: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; padding: 10px; min-height: 78px; }
+/* Высота ЖЁСТКО фиксирована, а не min-height: у разных героев описания умений
+   очень разной длины ("Урон: ~25" против описания призыва спутника), и сетка
+   меняла высоту при переходе хода от одного героя к другому — вместе с ней
+   ехало вниз/вверх всё, что под ней. Длинный текст обрезается по трём строкам. */
+.skill-btn {
+    background: #16a085; font-size: 15px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; width: 100%; padding: 10px;
+    height: 96px; overflow: hidden;
+}
+.skill-btn small {
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden; line-height: 1.25;
+}
 .skill-btn.selected-skill { border: 2px solid #fff; transform: scale(1.05); background: #2980b9; }
 .skill-btn:disabled { opacity: 0.8; background: #7f8c8d; border: none; transform: none; }
 .skill-btn-bot { opacity: 0.5; }
 
 #execute-btn { display: block; width: 300px; margin: 0 auto; font-size: 20px; padding: 15px; }
 #timer-display { font-size: 24px; font-weight: bold; color: #e74c3c; }
-#combat-log { margin-top: 20px; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; max-height: 150px; overflow-y: auto; text-align: left; }
+/* Высота фиксированная, а не max-height: раньше лог начинал бой с двух строк
+   и дорастал до 150px, растягивая страницу по ходу боя — вместе с ней ехало
+   и всё остальное. Теперь блок занимает своё место с самого начала. */
+#combat-log { margin-top: 20px; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; height: 150px; overflow-y: auto; text-align: left; }
 .death-log { color: #e74c3c; font-weight: bold; }
 /* Отключаем выделение текста и синие вспышки при клике на телефоне */
 * {
@@ -76,12 +88,6 @@ body {
     min-height: 44px;
   }
 }
-.screen {
-    /* Основные размеры и центрирование уже заданы в единственном .screen
-       правиле в начале файла - тут остаются только специфичные для
-       второстепенных случаев корректировки, если понадобятся. */
-}
-
 .heroes-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, 150px);
@@ -345,7 +351,6 @@ body {
    МОБИЛЬНАЯ АДАПТИВНОСТЬ
    ========================================================================= */
 @media (max-width: 768px) {
-    .game-title { font-size: 28px; }
     .squad-title { font-size: 18px; }
 
     .heroes-grid { grid-template-columns: repeat(auto-fit, 120px); gap: 10px; }
@@ -356,7 +361,7 @@ body {
     .details-grid { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
 
     .skills { gap: 8px; }
-    .skill-btn { font-size: 13px; padding: 8px; min-height: 84px; }
+    .skill-btn { font-size: 13px; padding: 8px; height: 104px; }
 
     .fighter { padding: 6px; }
     .fighter .avatar { width: 40px; height: 40px; margin: 0 6px 0 0; flex-shrink: 0; }
@@ -407,43 +412,35 @@ body {
 .team.mine { border-left: 3px solid #2ecc71; }
 .team.enemy { border-left: 3px solid #e74c3c; }
 
-/* Фон арены - градиент-заглушка + водяной знак иконки, пока не вставлена
-   собственная картинка (assets/arena_*.jpg, см. arenas.js -> bgAsset) */
-.arena-bg-field {
-    background-image: url('../assets/arena_field.jpg');
+/* Фон арены — отдельный неподвижный слой во всю ширину окна (см. index.html).
+   Размер задаётся окном, а не высотой экрана боя, поэтому картинка стоит на
+   месте, сколько бы ни менялось содержимое под ней. z-index: -1 кладёт слой
+   под контент, но над фоновым цветом страницы. */
+.arena-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
     background-size: cover;
     background-position: center;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
 }
-.arena-bg-fog   {
-    background-image: url('../assets/arena_fog.jpg');
-    background-size: cover;
-    background-position: center;
-}
-.arena-bg-swamp {
-    background-image: url('../assets/arena_swamp.jpg');
-    background-size: cover;
-    background-position: center;
-}
-.arena-bg-ice   {
-    background-image: url('../assets/arena_ice.jpg');
-    background-size: cover;
-    background-position: center;
-}
-.arena-bg-lair  {
-    background-image: url('../assets/arena_lair.jpg');
-    background-size: cover;
-    background-position: center;
-}
-.arena-bg-storm {
-    background-image: url('../assets/arena_storm.jpg');
-    background-size: cover;
-    background-position: center;
-}
+/* Слой виден только когда на нём стоит класс конкретной арены, то есть в бою.
+   ("arena-backdrop" под этот селектор не попадает — там "arena-ba", не "arena-bg".) */
+.arena-backdrop[class*="arena-bg-"] { opacity: 1; }
+
+.arena-bg-field { background-image: url('../assets/arena_field.jpg'); }
+.arena-bg-fog   { background-image: url('../assets/arena_fog.jpg'); }
+.arena-bg-swamp { background-image: url('../assets/arena_swamp.jpg'); }
+.arena-bg-ice   { background-image: url('../assets/arena_ice.jpg'); }
+.arena-bg-lair  { background-image: url('../assets/arena_lair.jpg'); }
+.arena-bg-storm { background-image: url('../assets/arena_storm.jpg'); }
 
 #screen-battle {
-    background-size: cover; background-position: center;
     border-radius: 12px; padding: 15px;
-    transition: background 0.4s;
+    /* Затемняющая подложка поверх фона арены, чтобы текст оставался читаемым */
+    background: rgba(26, 37, 47, 0.55);
 }
 #screen-battle::before {
     content: attr(data-arena-icon);
@@ -458,21 +455,6 @@ body {
     background: #4a4a4a; opacity: 0.55; cursor: not-allowed; position: relative;
 }
 .skill-btn.skill-locked::after { content: '🔒'; margin-left: 6px; }
-
-/* =========================================================================
-   ПРОПУСК ХОДА - ШТРАФ И ПРЕДУПРЕЖДЕНИЕ
-   ========================================================================= */
-.skip-warning {
-    color: #e74c3c; font-weight: bold; font-size: 13px; margin-top: 4px;
-}
-
-/* =========================================================================
-   БАФ ВТОРОГО ИГРОКА ("Внезапный натиск")
-   ========================================================================= */
-.underdog-badge {
-    display: inline-block; background: #8e44ad; color: white; font-size: 11px;
-    padding: 2px 6px; border-radius: 4px; margin-left: 6px;
-}
 
 /* =========================================================================
    ПРОМОКОДЫ
@@ -531,10 +513,6 @@ body {
 }
 .avatar-option:hover { border-color: #f1c40f; }
 .avatar-option.selected { border-color: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
-.profile-avatar-thumb {
-    width: 36px; height: 36px; border-radius: 50%; background-size: cover; background-position: center;
-    display: inline-block; vertical-align: middle; border: 2px solid #f1c40f; margin-right: 6px;
-}
 
 /* =========================================================================
    ВКЛАДКИ МАГАЗИНА (герои / образы)
@@ -549,8 +527,12 @@ body {
 /* =========================================================================
    БАФЫ/ДЕБАФЫ (v1.03): бейджи на карточке бойца + generic-анимация
    ========================================================================= */
-.buffs-row { display: flex; gap: 3px; margin-top: 2px; min-height: 16px; }
-.buff-badge { font-size: 13px; background: rgba(0,0,0,0.35); border-radius: 4px; padding: 0 3px; }
+/* Строго одна строка фиксированной высоты: при переносе бейджей на вторую
+   строку карточка бойца росла и двигала всё поле боя. */
+.buffs-row { display: flex; gap: 3px; margin-top: 2px; height: 18px; overflow: hidden; flex-wrap: nowrap; }
+.buff-badge { font-size: 13px; background: rgba(0,0,0,0.35); border-radius: 4px; padding: 0 3px; cursor: help; }
+/* Яд/ожог - отличаем от бафов красноватой подложкой, чтобы «плохое» читалось сразу */
+.dot-badge { background: rgba(192, 57, 43, 0.5); }
 
 @keyframes buff-positive-kf {
     0%, 100% { box-shadow: 0 0 0 rgba(52, 152, 219, 0); }
@@ -622,6 +604,55 @@ input[type="text"]:focus {
     background: #34495e;
 }
 .inventory-weapon-slot.filled { border-style: solid; border-color: #f1c40f; }
+.inventory-weapon-slot:hover { border-color: #f1c40f; background: #3d566e; }
+.inventory-slot-hint { color: #95a5a6; font-size: 12px; }
+
+/* --- Выбор оружия в слот героя --- */
+.weapon-picker-modal { max-width: 460px; }
+.weapon-picker-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px; margin: 15px 0; max-height: 46vh; overflow-y: auto;
+}
+.weapon-picker-item {
+    background: #2c3e50; border: 2px solid #7f8c8d; border-radius: 8px;
+    padding: 10px 6px; cursor: pointer; font-size: 12px; transition: 0.15s;
+}
+.weapon-picker-item:hover { border-color: #f1c40f; background: #3d566e; }
+.weapon-picker-item.native { border-color: #2ecc71; }
+.weapon-picker-icon { font-size: 30px; margin-bottom: 4px; }
+.weapon-picker-item small { display: block; color: #bdc3c7; margin-top: 3px; }
+.weapon-picker-native { color: #2ecc71; font-size: 11px; font-weight: bold; margin-top: 4px; }
+
+/* --- Полная сводка характеристик героя --- */
+.inventory-hero-stats { max-width: 560px; margin: 0 auto 20px; }
+.stats-title { margin: 0 0 10px; font-size: 18px; }
+.stats-weapon-line {
+    background: #2c3e50; border: 2px solid #f1c40f; border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; margin-bottom: 12px; text-align: left; line-height: 1.5;
+}
+.stats-weapon-empty { border-color: #7f8c8d; color: #95a5a6; font-style: italic; }
+.stats-weapon-foreign { color: #95a5a6; }
+
+.hero-stats-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    background: #2c3e50; border-radius: 8px; overflow: hidden;
+}
+.hero-stats-table th {
+    background: #1a252f; padding: 8px 10px; font-size: 12px; color: #bdc3c7; text-align: right;
+}
+.hero-stats-table th:first-child { text-align: left; }
+.hero-stats-table td { padding: 7px 10px; border-top: 1px solid rgba(255,255,255,0.07); text-align: right; }
+.hero-stats-table td:first-child { text-align: left; color: #ecf0f1; }
+.hero-stats-table td small { color: #95a5a6; font-size: 11px; }
+.hero-stats-table .stats-section td {
+    background: #1a252f; text-align: center; color: #f1c40f;
+    font-weight: bold; font-size: 12px; text-transform: uppercase;
+}
+.stat-same { color: #bdc3c7; }
+.stat-bare { color: #95a5a6; }
+.stat-armed { font-weight: bold; }
+.stat-up { color: #2ecc71; }
+.stat-down { color: #e74c3c; }
 
 .weapon-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; max-width: 420px; margin: 0 auto 20px; }
 .weapon-slot-item {
@@ -655,7 +686,7 @@ input[type="text"]:focus {
     30%, 50%, 70% { transform: translateX(-4px); }
     40%, 60% { transform: translateX(4px); }
 }
-body.screen-shake { animation: screen-shake-kf 0.4s ease-in-out; }
+.screen-shake { animation: screen-shake-kf 0.4s ease-in-out; }
 
 /* =========================================================================
    ВИДИМЫЙ СПУТНИК (скелет/медведь и т.п., см. companion-баф)

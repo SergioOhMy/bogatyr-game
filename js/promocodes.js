@@ -30,7 +30,10 @@ export const specialCharacters = [
         promoOnly: true,
         skills: [
             { name: 'Коготь', icon: '🐾', dmg: 30, type: 'attack', cooldown: 0 },
-            { name: 'Волчий инстинкт', icon: '🐺', type: 'buff', cooldown: 2, desc: 'Себе: +40% урона на 1 ход', buffTarget: 'self', effects: [{ stat: 'dmgBuff', value: 0.40, turns: 1, dispellable: true }] },
+            // turns: 2 обязательно — с turns: 1 баф истекал раньше, чем
+            // Волколак успевал ударить (подробности в characters.js у
+            // "Меткого глаза" Алёши).
+            { name: 'Волчий инстинкт', icon: '🐺', type: 'buff', cooldown: 3, desc: 'Себе: +40% урона на следующую атаку', buffTarget: 'self', effects: [{ stat: 'dmgBuff', value: 0.40, turns: 2, dispellable: true }] },
             { name: 'Волчья регенерация', icon: '🌙', dmg: -45, type: 'heal', cooldown: 3 },
             { name: 'Полнолуние', icon: '🌕', dmg: 100, type: 'attack', cooldown: 5, isUltimate: true }
         ],

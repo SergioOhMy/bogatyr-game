@@ -7,7 +7,15 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="version-badge">v1.03</div>
+    <!-- Фон арены живёт отдельным неподвижным слоем на весь экран.
+         Раньше он висел прямо на #screen-battle с background-size: cover, и
+         любое изменение высоты экрана боя (растущий лог, появившийся спутник,
+         навык с более длинным описанием) заставляло браузер пересчитать
+         "обложку" — картинка заметно ездила вверх-вниз. Отдельный слой
+         фиксированного размера от высоты содержимого не зависит вообще. -->
+    <div id="arena-backdrop" class="arena-backdrop"></div>
+
+    <div class="version-badge">v1.08</div>
 
     <div class="title-wrap" id="title-wrap">
         <img src="assets/title_logo.png" alt="Битва Богатырей: Легенды Руси" class="game-title-img">
@@ -74,6 +82,7 @@
         <h2 class="squad-title">Инвентарь</h2>
         <div id="inventory-hero-picker" class="inventory-hero-picker"></div>
         <div id="inventory-active-hero" class="inventory-active-hero"></div>
+        <div id="inventory-hero-stats" class="inventory-hero-stats"></div>
         <h3>Оружие в инвентаре</h3>
         <div id="weapon-grid" class="weapon-grid"></div>
         <div id="weapon-details" class="weapon-details-panel" style="display:none;"></div>
@@ -110,6 +119,21 @@
         <button id="btn-shop-back" class="danger-btn" style="margin-top: 20px;">Назад в дружину</button>
     </div>
 
+    <!-- 2.3 ВЫБОР ОРУЖИЯ В СЛОТ ГЕРОЯ -->
+    <div id="weapon-picker-backdrop" class="promo-modal-backdrop" style="display: none;">
+        <div class="promo-modal weapon-picker-modal">
+            <h3 id="weapon-picker-title">Выберите оружие</h3>
+            <div id="weapon-picker-grid" class="weapon-picker-grid"></div>
+            <p id="weapon-picker-empty" class="skins-hint" style="display:none;">
+                Свободного оружия нет. Оно выпадает из сундуков после боя или покупается в магазине.
+            </p>
+            <div class="promo-modal-actions">
+                <button id="btn-weapon-picker-unequip" class="danger-btn" style="display:none;">Снять оружие</button>
+                <button id="btn-weapon-picker-cancel">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 2.4 ПРОМОКОД: МОДАЛЬНОЕ ОКНО -->
     <div id="promo-modal-backdrop" class="promo-modal-backdrop" style="display: none;">
         <div class="promo-modal">
@@ -138,6 +162,12 @@
     <div id="screen-battle" class="screen arena-bg-field" style="display: none;">
         <h2 id="turn-indicator">Ходит: ...</h2>
         <p><span id="arena-label"></span> · Время на ход: <span id="timer-display">60</span> сек</p>
+
+        <div class="battlefield-header">
+            <span class="team-label mine">🛡️ Ваша дружина</span>
+            <span class="vs-divider">VS</span>
+            <span class="team-label enemy">⚔️ Противник</span>
+        </div>
 
         <div class="battlefield">
             <div id="player-team" class="team mine"></div>

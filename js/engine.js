@@ -13,6 +13,33 @@ export function rollChance(chance, rng = Math.random) {
     return rng() < chance;
 }
 
+/**
+ * Честное перемешивание (Фишер–Йетс).
+ *
+ * ВАЖНО: раньше и набор вражеской команды (combat.js), и симулятор баланса
+ * пользовались приёмом `arr.sort(() => 0.5 - Math.random())`. Это НЕ даёт
+ * равномерную перестановку: компаратор непоследователен, и реальный алгоритм
+ * сортировки просто "оседает" рядом с исходным порядком. На симуляции это
+ * было отлично видно — Илья (индекс 0) попадал в бой 10109 раз, а Василиса
+ * (индекс 12) всего 6529 при одинаковом ожидании ~8000. То есть и отчёт по
+ * балансу считался на перекошенной выборке, и игрок непропорционально часто
+ * встречал в противниках первых героев списка.
+ */
+export function shuffle(array, rng = Math.random) {
+    const out = [...array];
+    for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+}
+
+/** Случайный элемент массива (null для пустого). */
+export function pickRandom(array, rng = Math.random) {
+    if (!array || array.length === 0) return null;
+    return array[Math.floor(rng() * array.length)];
+}
+
 /** Урон одной атаки с учётом мультипликаторов атакующего, цели, арены и активных бафов/дебафов. */
 export function computeAttackDamage(skill, attacker, target, arena = null) {
     let dmg = skill.dmg * attacker.dmgMult * target.incDmgMult;
@@ -112,9 +139,35 @@ export function tickBuffs(character) {
     character.buffs = character.buffs.filter(b => b.turnsLeft > 0);
 }
 
+/**
+ * Потолки суммарного эффекта одного вида бафов.
+ *
+ * Без них эффекты складывались без ограничений: например, Стена щитов
+ * Добрыни (-7%) + Огненный щит Горыныча (-18%) + Природная защита Берегини
+ * (-20%) + Каменная кожа (-14%) и ульта Святогора (-35%) давали -94%
+ * получаемого урона, то есть команду становилось физически невозможно
+ * убить чем-либо, кроме "минимум 1 урона" из computeAttackDamage.
+ */
+export const BUFF_LIMITS = {
+    dmgBuff: { min: -0.80, max: 1.50 },
+    defBuff: { min: -0.70, max: 1.50 },
+    evasive: { min: 0, max: 0.85 },
+    blind:   { min: 0, max: 0.75 }
+};
+
+/** Максимальный итоговый шанс промахнуться/быть увёрнутым — чтобы «непробиваемых» бойцов не было. */
+export const MAX_AVOID_CHANCE = 0.85;
+
+function clampToLimits(stat, value) {
+    const limit = BUFF_LIMITS[stat];
+    if (!limit) return value;
+    return Math.min(limit.max, Math.max(limit.min, value));
+}
+
 export function getBuffValue(character, stat) {
     if (!character.buffs) return 0;
-    return character.buffs.filter(b => b.stat === stat).reduce((sum, b) => sum + b.value, 0);
+    const sum = character.buffs.filter(b => b.stat === stat).reduce((acc, b) => acc + b.value, 0);
+    return clampToLimits(stat, sum);
 }
 
 export function hasBuff(character, stat) {
@@ -150,11 +203,13 @@ export function resolveAction({ attacker, target, skill, arena = null, rng = Mat
 
     if (skill.type === 'attack') {
         const blindMiss = getBuffValue(attacker, 'blind');
-        if (rollChance(computeMissChance(arena) + blindMiss, rng)) {
+        const missChance = Math.min(MAX_AVOID_CHANCE, computeMissChance(arena) + blindMiss);
+        if (rollChance(missChance, rng)) {
             result.missed = true;
             return result;
         }
-        const dodgeChance = (target.passiveTrigger === 'dodge' ? target.passiveChance : 0) + getBuffValue(target, 'evasive');
+        const dodgeChance = Math.min(MAX_AVOID_CHANCE,
+            (target.passiveTrigger === 'dodge' ? target.passiveChance : 0) + getBuffValue(target, 'evasive'));
         if (dodgeChance > 0 && rollChance(dodgeChance, rng)) {
             result.dodged = true;
             return result;
