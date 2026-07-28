@@ -1,5 +1,6 @@
-import { state } from './state.js';
+import { state, currentProfile } from './state.js';
 import { passivesSystem } from './characters.js';
+import { getHeroImage } from './skins.js';
 
 export function log(msg) {
     const logDiv = document.getElementById('combat-log');
@@ -10,37 +11,72 @@ export function log(msg) {
 export function renderBattlefield(onTargetSelect) {
     const pDiv = document.getElementById('player-team');
     const eDiv = document.getElementById('enemy-team');
-    pDiv.innerHTML = ''; eDiv.innerHTML = '';
+
+    // Убираем элементы бойцов, которых больше нет в текущем составе команд -
+    // актуально при старте нового боя, т.к. теперь (см. ниже) существующие
+    // элементы переиспользуются, а не сносятся на каждый рендер.
+    const currentIds = new Set([...state.playerTeam, ...state.enemyTeam].map(c => c.id));
+    [pDiv, eDiv].forEach(container => {
+        Array.from(container.children).forEach(child => {
+            if (!currentIds.has(child.dataset.charId)) child.remove();
+        });
+    });
 
     const renderChar = (char, div) => {
         let isDead = char.hp <= 0;
         let hpPercent = Math.max(0, (char.hp / char.maxHp) * 100);
 
-        let el = document.createElement('div');
-        let classes = ['fighter'];
-
-        if (isDead) classes.push('dead-hero');
-        else if (state.turnQueue[state.currentTurnIndex] === char) classes.push('active-turn');
-
-        if (state.selectedTarget === char && !isDead) {
-            classes.push(state.selectedSkill && state.selectedSkill.type === 'heal' ? 'selected-target-heal' : 'selected-target');
+        // ВАЖНО: ищем уже существующий элемент и обновляем его на месте,
+        // а не пересоздаём. Раньше здесь всегда шло div.innerHTML='' +
+        // полная пересборка на каждый renderBattlefield() - а он вызывается
+        // сразу же после playHitFx/playDodgeFx/playCritFx и т.п. Элемент,
+        // на который анимация только что повесила CSS-класс, немедленно
+        // удалялся и создавался заново БЕЗ этого класса - анимация физически
+        // не успевала отрисоваться ни разу. Это и было причиной "анимаций не
+        // видно" при том, что сам код анимаций был рабочим.
+        let el = div.querySelector(`.fighter[data-char-id="${char.id}"]`);
+        if (!el) {
+            el = document.createElement('div');
+            el.classList.add('fighter');
+            el.dataset.charId = char.id;
+            el.onclick = () => onTargetSelect(char);
+            div.appendChild(el);
         }
-        el.className = classes.join(' ');
-        el.dataset.charId = char.id;
+
+        // Статусные классы переключаем точечно - анимационные классы
+        // (fx-*, hit-shake), которые мог поставить playXFx, не трогаем.
+        el.classList.toggle('dead-hero', isDead);
+        el.classList.toggle('active-turn', !isDead && state.turnQueue[state.currentTurnIndex] === char);
+        const isSelected = state.selectedTarget === char && !isDead;
+        const isAlly = state.playerTeam.includes(char);
+        el.classList.toggle('selected-target-ally', isSelected && isAlly);
+        el.classList.toggle('selected-target-enemy', isSelected && !isAlly);
 
         let skullHtml = isDead ? `<div class="skull-overlay">💀</div>` : '';
+        const buffIcons = { dmgBuff: '⚔️', defBuff: '🛡️', evasive: '💨', blind: '😵', stun: '💫', companion: '👥' };
+        const buffsHtml = (char.buffs || []).map(b =>
+            `<span class="buff-badge" title="${b.stat}: ${b.turnsLeft} х.">${(b.meta && b.meta.icon) || buffIcons[b.stat] || '✨'}</span>`
+        ).join('');
 
-        el.innerHTML = `
+        // Заменяем содержимое ТОЛЬКО через вложенный .fighter-content, а не
+        // innerHTML самого .fighter - иначе так же стирались бы всплывающие
+        // цифры урона/частицы (см. spawnFloatingText/spawnParticleBurst),
+        // которые добавляются как соседние дети прямо в el.
+        let content = el.querySelector('.fighter-content');
+        if (!content) {
+            content = document.createElement('div');
+            content.className = 'fighter-content';
+            el.appendChild(content);
+        }
+        content.innerHTML = `
             ${skullHtml}
-            <div class="avatar" style="background-image: url('${char.img}');"></div>
+            <div class="avatar" style="background-image: url('${getHeroImage(char, currentProfile)}');"></div>
             <div class="stats">
                 <b>${char.name}</b> <small>(${char.hp}/${char.maxHp})</small>
                 <div class="passive-info">${char.passiveName}</div>
+                ${buffsHtml ? `<div class="buffs-row">${buffsHtml}</div>` : ''}
                 <div class="hp-bar-bg"><div class="hp-bar-fill" style="width: ${hpPercent}%; background: ${hpPercent < 30 ? '#e74c3c' : '#2ecc71'}"></div></div>
             </div>`;
-
-        el.onclick = () => onTargetSelect(char);
-        div.appendChild(el);
     };
 
     state.playerTeam.forEach(c => renderChar(c, pDiv));
@@ -60,13 +96,30 @@ export function renderSkills(char, onSkillSelect) {
         let btn = document.createElement('button');
         const turnsUntilUnlock = skill.unlockTurn - char.turnsTaken;
         const isLocked = turnsUntilUnlock > 0;
-        btn.className = 'skill-btn' + (skill.isUltimate ? ' ultimate-btn' : '') + (isLocked ? ' skill-locked' : '');
+        const isSpecial = skill.type === 'buff' || skill.type === 'dispel' || skill.type === 'summon';
+        btn.className = 'skill-btn' + (skill.isUltimate ? ' ultimate-btn' : '') + (isLocked ? ' skill-locked' : '') + (isSpecial ? ' special-btn' : '');
         if (state.selectedSkill === skill) btn.classList.add('selected-skill');
 
         let cdLeft = char.currentCooldowns[skill.name];
-        let displayVal = Math.round(Math.abs(skill.dmg) * (skill.type === 'heal' ? char.healMult : char.dmgMult));
 
-        let innerHtml = `<div><span>${skill.icon}</span> <b>${skill.name}</b>${skill.isUltimate ? ' <span class="ult-tag">ULT</span>' : ''}${skill.aoe ? ' <span class="ult-tag">ВСЕ</span>' : ''}</div> <small>(${skill.dmg > 0 ? 'Урон' : 'Хил'}: ~${displayVal})</small>`;
+        let displayName = skill.name;
+        let displayLine;
+        if (skill.type === 'summon') {
+            const companionActive = char.buffs && char.buffs.some(b => b.stat === 'companion');
+            if (companionActive) {
+                displayName = `Лечить: ${skill.companion.label}`;
+                displayLine = `<small>Восстановить себе ~${skill.companion.procHeal} ХП</small>`;
+            } else {
+                displayLine = `<small>${skill.desc}</small>`;
+            }
+        } else if (isSpecial) {
+            displayLine = `<small>${skill.desc}</small>`;
+        } else {
+            let displayVal = Math.round(Math.abs(skill.dmg) * (skill.type === 'heal' ? char.healMult : char.dmgMult));
+            displayLine = `<small>(${skill.dmg > 0 ? 'Урон' : 'Хил'}: ~${displayVal})</small>`;
+        }
+
+        let innerHtml = `<div><span>${skill.icon}</span> <b>${displayName}</b>${skill.isUltimate ? ' <span class="ult-tag">ULT</span>' : ''}${skill.aoe ? ' <span class="ult-tag">ВСЕ</span>' : ''}</div> ${displayLine}`;
 
         if (isLocked) {
             innerHtml += `<br><small style="color: #95a5a6;">Откроется через ${turnsUntilUnlock} ход(а)</small>`;
@@ -86,12 +139,20 @@ export function checkActionState() {
     const btn = document.getElementById('execute-btn');
     if (state.selectedSkill && state.selectedTarget) {
         btn.disabled = false;
+        const skill = state.selectedSkill;
         if (state.selectedTarget.aoe) {
-            btn.innerText = state.selectedSkill.type === 'heal' ? 'Исцелить всю дружину!' : 'Ударить по всем врагам!';
-            btn.style.background = state.selectedSkill.type === 'heal' ? '#27ae60' : '#c0392b';
-        } else if (state.selectedSkill.type === 'heal') {
+            if (skill.type === 'heal') { btn.innerText = 'Исцелить всю дружину!'; btn.style.background = '#27ae60'; }
+            else if (skill.type === 'attack') { btn.innerText = 'Ударить по всем врагам!'; btn.style.background = '#c0392b'; }
+            else { btn.innerText = `Применить: ${skill.name}!`; btn.style.background = '#8e44ad'; }
+        } else if (state.selectedTarget.self) {
+            btn.innerText = `Применить: ${skill.name}!`;
+            btn.style.background = '#8e44ad';
+        } else if (skill.type === 'heal') {
             btn.innerText = `Лечить: ${state.selectedTarget.name}!`;
             btn.style.background = '#27ae60';
+        } else if (skill.type === 'buff' || skill.type === 'dispel') {
+            btn.innerText = `${skill.name}: ${state.selectedTarget.name}`;
+            btn.style.background = '#8e44ad';
         } else {
             btn.innerText = `Ударить: ${state.selectedTarget.name}!`;
             btn.style.background = '#c0392b';
@@ -123,7 +184,7 @@ export function renderHeroDetails(container, char) {
 
     container.innerHTML = `
         <div class="hero-details-card">
-            <div class="details-avatar" style="background-image: url('${char.img}');"></div>
+            <div class="details-avatar" style="background-image: url('${getHeroImage(char, currentProfile)}');"></div>
             <div class="details-info">
                 <div class="details-name">${char.name} <span class="details-race">${raceLabel}</span></div>
                 <div class="details-grid">
@@ -237,6 +298,12 @@ export function playUltimateFx(attacker, target) {
     if (attackerEl) attackerEl.style.setProperty('--ult-glow', hexToRgba(vfx.color, 0.9));
     playCssFx(attackerEl, 'fx-ultimate-cast', 700);
     spawnParticleBurst(targetEl, vfx.particle, vfx.color);
+}
+
+/** Общая анимация для бафов/дебафов/dispel/призыва: положительный - синее свечение, отрицательный - фиолетовое. */
+export function playBuffFx(target, { positive = true } = {}) {
+    const el = findFighterEl(target);
+    playCssFx(el, positive ? 'fx-buff-positive' : 'fx-buff-negative', 550);
 }
 
 function hexToRgba(hex, alpha) {

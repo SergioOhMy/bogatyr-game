@@ -13,9 +13,11 @@ export function rollChance(chance, rng = Math.random) {
     return rng() < chance;
 }
 
-/** Урон одной атаки с учётом мультипликаторов атакующего, цели и арены. */
+/** Урон одной атаки с учётом мультипликаторов атакующего, цели, арены и активных бафов/дебафов. */
 export function computeAttackDamage(skill, attacker, target, arena = null) {
     let dmg = skill.dmg * attacker.dmgMult * target.incDmgMult;
+    dmg *= (1 + getBuffValue(attacker, 'dmgBuff'));
+    dmg *= (1 + getBuffValue(target, 'defBuff'));
     if (arena) {
         dmg *= arena.dmgMultForRace(attacker.race);
         dmg *= arena.incDmgMultForRace(target.race);
@@ -81,6 +83,57 @@ export function applySkillDot(skill, target) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Бафы / дебафы (v1.03). Хранятся как character.buffs: массив
+// { stat, value, turnsLeft, dispellable }.
+// Поддерживаемые stat:
+//   'dmgBuff'     - множитель урона атакующего (+0.3 = +30% урона)
+//   'defBuff'     - множитель получаемого урона (-0.3 = -30% входящего урона)
+//   'evasive'     - дополнительный шанс уворота (0.9 = +90% к шансу)
+//   'blind'       - дополнительный шанс промаха СВОИХ атак (0.3 = +30%)
+//   'stun'        - пропускает следующий собственный ход целиком
+//   'companion'   - разовый "вызов" (скелет/медведь), см. combat.js
+// ---------------------------------------------------------------------------
+
+export function addBuff(character, buff) {
+    character.buffs = character.buffs || [];
+    character.buffs.push({
+        stat: buff.stat,
+        value: buff.value,
+        turnsLeft: buff.turnsLeft ?? buff.turns ?? 1,
+        dispellable: buff.dispellable !== false,
+        meta: buff.meta
+    });
+}
+
+export function tickBuffs(character) {
+    if (!character.buffs) return;
+    character.buffs.forEach(b => b.turnsLeft--);
+    character.buffs = character.buffs.filter(b => b.turnsLeft > 0);
+}
+
+export function getBuffValue(character, stat) {
+    if (!character.buffs) return 0;
+    return character.buffs.filter(b => b.stat === stat).reduce((sum, b) => sum + b.value, 0);
+}
+
+export function hasBuff(character, stat) {
+    return !!(character.buffs && character.buffs.some(b => b.stat === stat));
+}
+
+export function removeBuffsByStat(character, stat) {
+    if (!character.buffs) return;
+    character.buffs = character.buffs.filter(b => b.stat !== stat);
+}
+
+/** Снимает все РАЗВЕИВАЕМЫЕ бафы/дебафы с цели (дебаф-скиллы "снять чары" и т.п.). Возвращает сколько сняли. */
+export function dispelBuffs(character) {
+    if (!character.buffs) return 0;
+    const before = character.buffs.length;
+    character.buffs = character.buffs.filter(b => !b.dispellable);
+    return before - character.buffs.length;
+}
+
 /**
  * Разрешает одно применение навыка и возвращает структурированный результат,
  * не трогая HP и не работая с DOM — этим занимается вызывающий код (combat.js
@@ -96,11 +149,13 @@ export function resolveAction({ attacker, target, skill, arena = null, rng = Mat
     };
 
     if (skill.type === 'attack') {
-        if (rollChance(computeMissChance(arena), rng)) {
+        const blindMiss = getBuffValue(attacker, 'blind');
+        if (rollChance(computeMissChance(arena) + blindMiss, rng)) {
             result.missed = true;
             return result;
         }
-        if (target.passiveTrigger === 'dodge' && rollChance(target.passiveChance, rng)) {
+        const dodgeChance = (target.passiveTrigger === 'dodge' ? target.passiveChance : 0) + getBuffValue(target, 'evasive');
+        if (dodgeChance > 0 && rollChance(dodgeChance, rng)) {
             result.dodged = true;
             return result;
         }

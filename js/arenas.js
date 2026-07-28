@@ -55,6 +55,19 @@ export const arenas = [
             }
             return null;
         }
+    },
+    {
+        id: 'storm', name: 'Грозовые небеса', icon: '⚡', bgAsset: 'assets/arena_storm.jpg',
+        desc: 'Молнии бьют по самым крупным целям: звери наносят +15% урона, но и получают +10% урона, а духи используют ветер и восстанавливают 4% HP за ход.',
+        ...neutralMods(),
+        dmgMultForRace: (race) => race === 'beast' ? 1.15 : 1,
+        incDmgMultForRace: (race) => race === 'beast' ? 1.1 : 1,
+        turnStartEffect: (character) => {
+            if (character.race === 'spirit') {
+                return { type: 'heal', amount: Math.round(character.maxHp * 0.04) };
+            }
+            return null;
+        }
     }
 ];
 

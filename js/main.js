@@ -1,10 +1,12 @@
 import {
     state, currentProfile, allProfiles, loadProfile, createProfile,
-    deleteProfile, buyHero, selectProfile, setDifficulty, redeemPromoCode
+    deleteProfile, buyHero, selectProfile, setDifficulty, redeemPromoCode,
+    buySkin, equipSkin
 } from './state.js';
 import { baseCharacters, passivesSystem } from './characters.js';
 import { arenas } from './arenas.js';
 import { promoCodes, getSpecialCharacterById } from './promocodes.js';
+import { getSkinsForHero, getHeroImage } from './skins.js';
 import { startCombat, executeAction } from './combat.js';
 import { renderHeroDetails } from './ui.js';
 
@@ -12,6 +14,7 @@ let screenAuth, screenMenu, screenBattle, screenArena, screenShop;
 let selectedForStart = [];
 let selectedProfileIndex = null; // Какой профиль выделен в меню загрузки
 let selectedArenaId = 'field';
+let selectedAvatar = baseCharacters[0].img;
 
 document.addEventListener('DOMContentLoaded', () => {
     screenAuth = document.getElementById('screen-auth');
@@ -30,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-create').onclick = () => {
         const name = document.getElementById('input-name').value || 'Богатырь';
-        createProfile(name, selectedForStart);
+        createProfile(name, selectedForStart, selectedAvatar);
         document.getElementById('input-name').value = '';
         showMenu();
     };
@@ -85,9 +88,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showMenu();
     };
 
-    // Магазин - теперь отдельный экран
+    // Магазин - теперь отдельный экран с двумя вкладками
     document.getElementById('btn-goto-shop').onclick = () => showShop();
     document.getElementById('btn-shop-back').onclick = () => showMenu();
+    document.getElementById('tab-shop-heroes').onclick = () => switchShopTab('heroes');
+    document.getElementById('tab-shop-skins').onclick = () => switchShopTab('skins');
 
     // Промокод
     document.getElementById('btn-open-promo').onclick = () => openPromoModal();
@@ -130,7 +135,7 @@ function renderProfilesList() {
         const w = prof.stats ? prof.stats.wins : 0;
         const l = prof.stats ? prof.stats.losses : 0;
         div.innerHTML = `
-            <div class="avatar" style="background-image: url('assets/ilya.png'); opacity: 0.5;"></div>
+            <div class="avatar" style="background-image: url('${prof.avatar || 'assets/ilya.png'}');"></div>
             <b>${escapeHtml(prof.name)}</b><br>
             <small style="color: #f1c40f;">${prof.coins} 💰</small><br>
             <small style="color: #bdc3c7;">🏆 ${w} / 💀 ${l}</small>
@@ -153,11 +158,30 @@ function escapeHtml(str) {
     return d.innerHTML;
 }
 
+function renderAvatarPicker() {
+    const container = document.getElementById('avatar-picker');
+    container.innerHTML = '';
+    baseCharacters.forEach(char => {
+        const div = document.createElement('div');
+        div.className = 'avatar-option' + (char.img === selectedAvatar ? ' selected' : '');
+        div.style.backgroundImage = `url('${char.img}')`;
+        div.title = char.name;
+        div.onclick = () => {
+            selectedAvatar = char.img;
+            Array.from(container.children).forEach(c => c.classList.remove('selected'));
+            div.classList.add('selected');
+        };
+        container.appendChild(div);
+    });
+}
+
 function renderAuthHeroes() {
     const container = document.getElementById('auth-heroes-list');
     const detailsContainer = document.getElementById('auth-hero-details');
     container.innerHTML = '';
     selectedForStart = [];
+    selectedAvatar = baseCharacters[0].img;
+    renderAvatarPicker();
     renderHeroDetails(detailsContainer, null);
 
     baseCharacters.forEach(char => {
@@ -227,7 +251,7 @@ export function showMenu() {
         const card = document.createElement('div');
         card.className = 'card hero-card' + (char.promoOnly ? ' promo-hero-slot' : '');
         card.innerHTML = `
-            <div class="avatar" style="background-image: url('${char.img}');"></div>
+            <div class="avatar" style="background-image: url('${getHeroImage(char, currentProfile)}');"></div>
             <b>${char.name}</b><br>
             <div class="passive-badge" title="${p.desc}">${p.name}</div>
             ${char.promoOnly ? '<div class="promo-hero-tag">🎁 Промо · 1 бой</div>' : '<small style="display:block; margin-top:8px;">Ваш боец</small>'}
@@ -253,18 +277,30 @@ export function showMenu() {
     document.getElementById('btn-battle').disabled = state.playerTeam.length !== 3;
 }
 
-// Отдельный экран магазина: покупка теперь через подтверждение, а панель
-// характеристик всегда находится под сеткой героев (не мешает на мобильных).
+// Отдельный экран магазина: покупка героев и покупка/экипировка образов
+// (скинов) на двух вкладках. Покупка везде идёт через подтверждение.
 function showShop() {
     screenMenu.style.display = 'none';
     screenShop.style.display = 'block';
 
     document.getElementById('ui-coins').innerText = currentProfile.coins;
+    switchShopTab('heroes');
+    renderShopHeroes();
+    renderShopSkins();
+}
 
+function switchShopTab(tab) {
+    document.getElementById('tab-shop-heroes').classList.toggle('active', tab === 'heroes');
+    document.getElementById('tab-shop-skins').classList.toggle('active', tab === 'skins');
+    document.getElementById('shop-heroes-panel').style.display = tab === 'heroes' ? 'block' : 'none';
+    document.getElementById('shop-skins-panel').style.display = tab === 'skins' ? 'block' : 'none';
+    renderHeroDetails(document.getElementById('shop-hero-details'), null);
+}
+
+function renderShopHeroes() {
     const shopContainer = document.getElementById('ui-shop-heroes');
     const detailsContainer = document.getElementById('shop-hero-details');
     shopContainer.innerHTML = '';
-    renderHeroDetails(detailsContainer, null);
 
     baseCharacters.filter(char => !currentProfile.unlockedHeroes.includes(char.id)).forEach(char => {
         const p = passivesSystem[char.passive];
@@ -277,7 +313,6 @@ function showShop() {
             <div style="margin-top:8px;">Цена: <b>${char.price} 💰</b></div>
             <button style="margin-top:5px; padding: 5px 10px; font-size: 14px;">Купить</button>
         `;
-        // Клик по карточке - только подсветка + характеристики, покупка отдельной кнопкой
         card.onclick = () => {
             Array.from(shopContainer.children).forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
@@ -292,12 +327,70 @@ function showShop() {
             if (confirm(`Купить героя "${char.name}" за ${char.price} монет?`)) {
                 if (buyHero(char.price, char.id)) {
                     alert('Герой куплен!');
-                    showShop();
+                    document.getElementById('ui-coins').innerText = currentProfile.coins;
+                    renderShopHeroes();
+                    renderShopSkins();
                 }
             }
         };
         shopContainer.appendChild(card);
     });
+}
+
+function renderShopSkins() {
+    const container = document.getElementById('ui-shop-skins');
+    const detailsContainer = document.getElementById('shop-hero-details');
+    container.innerHTML = '';
+
+    const ownedHeroes = baseCharacters.filter(c => currentProfile.unlockedHeroes.includes(c.id));
+
+    ownedHeroes.forEach(char => {
+        getSkinsForHero(char.id).forEach(skin => {
+            const owned = currentProfile.unlockedSkins.includes(skin.id);
+            const equipped = currentProfile.equippedSkins[char.id] === skin.id;
+
+            const card = document.createElement('div');
+            card.className = 'card hero-card';
+            card.innerHTML = `
+                <div class="avatar" style="background-image: url('${skin.img}');"></div>
+                <b>${skin.name}</b><br>
+                <small style="color:#bdc3c7;">${char.name}</small>
+                ${owned
+                    ? `<div class="${equipped ? 'skin-equipped-tag' : 'skin-owned-tag'}">${equipped ? '✓ Надето' : 'Куплено'}</div>`
+                    : `<div style="margin-top:8px;">Цена: <b>${skin.price} 💰</b></div>`}
+                <button style="margin-top:8px; padding: 5px 10px; font-size: 13px;">
+                    ${owned ? (equipped ? 'Снять' : 'Надеть') : 'Купить'}
+                </button>
+            `;
+            card.onclick = () => renderHeroDetails(detailsContainer, char);
+            card.querySelector('button').onclick = (e) => {
+                e.stopPropagation();
+                if (!owned) {
+                    if (currentProfile.coins < skin.price) {
+                        alert('Не хватает монет!');
+                        return;
+                    }
+                    if (confirm(`Купить образ "${skin.name}" за ${skin.price} монет?`)) {
+                        if (buySkin(skin.id, skin.price)) {
+                            document.getElementById('ui-coins').innerText = currentProfile.coins;
+                            renderShopSkins();
+                        }
+                    }
+                } else if (equipped) {
+                    equipSkin(char.id, null);
+                    renderShopSkins();
+                } else {
+                    equipSkin(char.id, skin.id);
+                    renderShopSkins();
+                }
+            };
+            container.appendChild(card);
+        });
+    });
+
+    if (container.children.length === 0) {
+        container.innerHTML = '<p style="color:#95a5a6;">Пока нет доступных образов — сначала откройте героев на вкладке «Герои».</p>';
+    }
 }
 
 function showArenaScreen() {

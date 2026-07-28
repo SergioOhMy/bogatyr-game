@@ -27,6 +27,9 @@ function ensureProfileShape(p) {
     if (typeof p.coins !== 'number') p.coins = 0;
     if (!Array.isArray(p.redeemedCodes)) p.redeemedCodes = [];
     if (p.pendingPromoHero === undefined) p.pendingPromoHero = null;
+    if (!p.avatar) p.avatar = 'assets/ilya.png';
+    if (!Array.isArray(p.unlockedSkins)) p.unlockedSkins = [];
+    if (!p.equippedSkins || typeof p.equippedSkins !== 'object') p.equippedSkins = {};
     return p;
 }
 
@@ -60,11 +63,12 @@ export function selectProfile(index) {
     currentProfile = allProfiles[index];
 }
 
-export function createProfile(name, selectedHeroes) {
+export function createProfile(name, selectedHeroes, avatarImg) {
     const newProfile = ensureProfileShape({
         id: generateId(),
         name: name,
         coins: 0,
+        avatar: avatarImg || 'assets/ilya.png',
         unlockedHeroes: selectedHeroes
     });
     allProfiles.push(newProfile);
@@ -99,9 +103,11 @@ export function setDifficulty(difficulty) {
     }
 }
 
-export function winBattle() {
+export const DIFFICULTY_REWARDS = { easy: 25, normal: 50, hard: 90 };
+
+export function winBattle(difficulty) {
     if (currentProfile) {
-        currentProfile.coins += 50;
+        currentProfile.coins += DIFFICULTY_REWARDS[difficulty] || DIFFICULTY_REWARDS.normal;
         currentProfile.stats.wins++;
         currentProfile.stats.battles++;
         saveProfile();
@@ -124,6 +130,25 @@ export function buyHero(heroPrice, heroId) {
         return true;
     }
     return false;
+}
+
+/** Покупка альтернативного образа (см. js/skins.js). Требует уже открытого героя. */
+export function buySkin(skinId, price) {
+    if (currentProfile.coins >= price && !currentProfile.unlockedSkins.includes(skinId)) {
+        currentProfile.coins -= price;
+        currentProfile.unlockedSkins.push(skinId);
+        saveProfile();
+        return true;
+    }
+    return false;
+}
+
+/** Надеть купленный скин героя (или снять его, если skinId === null). */
+export function equipSkin(heroId, skinId) {
+    if (skinId && !currentProfile.unlockedSkins.includes(skinId)) return false;
+    currentProfile.equippedSkins[heroId] = skinId || null;
+    saveProfile();
+    return true;
 }
 
 /**

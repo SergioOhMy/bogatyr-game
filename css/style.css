@@ -1,6 +1,7 @@
 * { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #2c3e50; color: white; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; overflow-x: hidden; }
-.screen { display: none; width: 100%; max-width: 900px; text-align: center; }
+html, body { width: 100%; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #2c3e50; color: white; margin: 0; padding: 20px; overflow-x: hidden; }
+.screen { display: none; width: 100%; max-width: 900px; margin: 0 auto; padding: 20px; text-align: center; }
 .active-screen { display: block; }
 
 .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 20px; }
@@ -23,10 +24,11 @@ button:disabled { background: #7f8c8d; cursor: not-allowed; }
 .battlefield { display: flex; justify-content: space-between; margin-top: 30px; gap: 50px; }
 .team { display: flex; flex-direction: column; gap: 15px; width: 45%; }
 
-.fighter { display: flex; align-items: center; background: #34495e; padding: 10px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; transition: 0.2s; position: relative; }
+.fighter { background: #34495e; padding: 10px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; transition: 0.2s; position: relative; }
+.fighter-content { display: flex; align-items: center; }
 .fighter.active-turn { border-color: #f1c40f; box-shadow: 0 0 15px #f1c40f; }
-.fighter.selected-target { border-color: #e74c3c; background: #c0392b; box-shadow: 0 0 10px #e74c3c; }
-.fighter.selected-target-heal { border-color: #2ecc71; background: #27ae60; box-shadow: 0 0 10px #2ecc71; }
+.fighter.selected-target-enemy { border-color: #e74c3c; background: #c0392b; box-shadow: 0 0 10px #e74c3c; }
+.fighter.selected-target-ally { border-color: #3498db; background: #2980b9; box-shadow: 0 0 10px #3498db; }
 .fighter.dead-hero { filter: grayscale(100%); opacity: 0.5; cursor: not-allowed; }
 
 .skull-overlay { position: absolute; left: 15px; top: 15px; font-size: 50px; z-index: 10; pointer-events: none; }
@@ -58,13 +60,14 @@ body {
 
 /* Настройки для экранов телефонов (шириной меньше 768px) */
 @media (max-width: 768px) {
-  /* Делаем так, чтобы команды богатырей стояли друг под другом, а не слипались */
-  .battlefield {
-    flex-direction: column;
-    gap: 20px;
-  }
-  .team { width: 100%; }
-  
+  /* ВАЖНО: команды остаются бок о бок (слева - свои, справа - враги) на
+     любой ширине экрана. Раньше здесь стояла flex-direction: column, из-за
+     чего обе команды съезжали в один сплошной список - это и была причина
+     жалобы "все лежат друг на друге, непонятно где свои". Вместо смены
+     направления просто уменьшаем карточки, чтобы 2 колонки помещались. */
+  .battlefield { gap: 10px; }
+  .team { width: 48%; gap: 8px; }
+
   /* Увеличиваем кнопки, чтобы по ним легко попадать пальцем */
   button {
     padding: 12px 20px;
@@ -73,10 +76,9 @@ body {
   }
 }
 .screen {
-    padding: 20px;
-    max-width: 800px;
-    margin: 0 auto;
-    text-align: center;
+    /* Основные размеры и центрирование уже заданы в единственном .screen
+       правиле в начале файла - тут остаются только специфичные для
+       второстепенных случаев корректировки, если понадобятся. */
 }
 
 .heroes-grid {
@@ -109,32 +111,13 @@ body {
     font-size: 18px;
     padding: 15px 30px;
 }
-/* --- СТИЛИ ДЛЯ ЗАГОЛОВКОВ --- */
-.game-title {
-    font-family: 'Yeseva One', 'Georgia', 'Times New Roman', serif;
-    color: #ffcc00; /* Золотой цвет */
-    text-shadow: 2px 2px 0px #000, 4px 4px 8px rgba(0, 0, 0, 0.7);
-    font-size: 42px;
-    letter-spacing: 2px;
-    margin: 10px 0 4px 0;
-    text-transform: uppercase;
-    text-align: center;
-}
-.game-subtitle {
-    text-align: center;
-    color: #d9c27e;
-    font-family: 'Yeseva One', 'Georgia', serif;
-    font-size: 16px;
-    letter-spacing: 3px;
-    margin-bottom: 8px;
-}
-.title-ornament {
-    text-align: center;
-    color: #f1c40f;
-    opacity: 0.75;
-    letter-spacing: 12px;
-    font-size: 14px;
-    margin-bottom: 18px;
+/* --- ЗАГОЛОВОК (картинка-лого вместо текста, см. assets/title_logo.png) --- */
+.title-wrap { text-align: center; margin: 10px 0 18px 0; }
+.game-title-img {
+    max-width: 90%;
+    width: 480px;
+    height: auto;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,0.6));
 }
 
 .version-badge {
@@ -357,8 +340,13 @@ body {
     .skills { gap: 8px; }
     .skill-btn { min-width: 130px; font-size: 13px; padding: 8px; }
 
-    .fighter { padding: 8px; }
-    .fighter .avatar { width: 48px; height: 48px; margin-right: 10px; }
+    .fighter { padding: 6px; }
+    .fighter .avatar { width: 40px; height: 40px; margin: 0 6px 0 0; flex-shrink: 0; }
+    .fighter .stats b { font-size: 12px; }
+    .fighter .stats small { font-size: 10px; }
+    .fighter .passive-info { font-size: 8px; }
+    .fighter .hp-bar-bg { height: 6px; }
+    .skull-overlay { font-size: 30px; left: 6px; top: 6px; }
 
     .arena-card { width: 100%; max-width: 320px; }
 
@@ -368,6 +356,14 @@ body {
 
     .floating-text { font-size: 16px; }
     .floating-crit { font-size: 20px; }
+}
+
+@media (max-width: 380px) {
+    .fighter .avatar { width: 32px; height: 32px; margin-right: 4px; }
+    .fighter { padding: 4px; }
+    .fighter .stats b { font-size: 11px; }
+    .team { width: 49%; }
+    .battlefield { gap: 6px; }
 }
 
 /* Гарантируем минимальный размер тач-таргетов на всех экранах, не только <768px */
@@ -395,11 +391,36 @@ body {
 
 /* Фон арены - градиент-заглушка + водяной знак иконки, пока не вставлена
    собственная картинка (assets/arena_*.jpg, см. arenas.js -> bgAsset) */
-.arena-bg-field { background: linear-gradient(180deg, #3b5c3f, #24331f); }
-.arena-bg-fog   { background: linear-gradient(180deg, #5c6d73, #35424a); }
-.arena-bg-swamp { background: linear-gradient(180deg, #3f4d2e, #232b1a); }
-.arena-bg-ice   { background: linear-gradient(180deg, #4a6b8a, #23384d); }
-.arena-bg-lair  { background: linear-gradient(180deg, #5c2b1e, #2b1310); }
+.arena-bg-field {
+    background-image: url('../assets/arena_field.jpg');
+    background-size: cover;
+    background-position: center;
+}
+.arena-bg-fog   {
+    background-image: url('../assets/arena_fog.jpg');
+    background-size: cover;
+    background-position: center;
+}
+.arena-bg-swamp {
+    background-image: url('../assets/arena_swamp.jpg');
+    background-size: cover;
+    background-position: center;
+}
+.arena-bg-ice   {
+    background-image: url('../assets/arena_ice.jpg');
+    background-size: cover;
+    background-position: center;
+}
+.arena-bg-lair  {
+    background-image: url('../assets/arena_lair.jpg');
+    background-size: cover;
+    background-position: center;
+}
+.arena-bg-storm {
+    background-image: url('../assets/arena_storm.jpg');
+    background-size: cover;
+    background-position: center;
+}
 
 #screen-battle {
     background-size: cover; background-position: center;
@@ -408,7 +429,7 @@ body {
 }
 #screen-battle::before {
     content: attr(data-arena-icon);
-    display: block; text-align: center; font-size: 60px; opacity: 0.35;
+    display: block; text-align: center; font-size: 60px; opacity: 0.15;
     margin-bottom: -20px;
 }
 
@@ -476,3 +497,54 @@ body {
     .battlefield-header { flex-direction: column; gap: 6px; }
     #screen-battle::before { font-size: 40px; }
 }
+
+/* Маленькая второстепенная кнопка (например "Удалить профиль" - не должна
+   визуально спорить с основным действием) */
+.small-btn { font-size: 12px; padding: 6px 14px; margin-top: 0; opacity: 0.85; }
+.small-btn:hover:not(:disabled) { opacity: 1; }
+
+/* =========================================================================
+   ВЫБОР АВАТАРА ПРОФИЛЯ
+   ========================================================================= */
+.avatar-picker { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 10px auto 20px; max-width: 500px; }
+.avatar-option {
+    width: 52px; height: 52px; border-radius: 50%; background-size: cover; background-position: center;
+    border: 3px solid #7f8c8d; cursor: pointer; transition: 0.15s;
+}
+.avatar-option:hover { border-color: #f1c40f; }
+.avatar-option.selected { border-color: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
+.profile-avatar-thumb {
+    width: 36px; height: 36px; border-radius: 50%; background-size: cover; background-position: center;
+    display: inline-block; vertical-align: middle; border: 2px solid #f1c40f; margin-right: 6px;
+}
+
+/* =========================================================================
+   ВКЛАДКИ МАГАЗИНА (герои / образы)
+   ========================================================================= */
+.shop-tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 15px; }
+.shop-tab { background: #34495e; opacity: 0.7; padding: 8px 18px; font-size: 14px; }
+.shop-tab.active { background: #16a085; opacity: 1; }
+.skins-hint { color: #bdc3c7; font-size: 13px; max-width: 500px; margin: 0 auto 15px; }
+.skin-owned-tag { background: #2ecc71; color: #1a252f; font-size: 10px; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 6px; font-weight: bold; }
+.skin-equipped-tag { background: #f1c40f; color: #1a252f; font-size: 10px; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 6px; font-weight: bold; }
+
+/* =========================================================================
+   БАФЫ/ДЕБАФЫ (v1.03): бейджи на карточке бойца + generic-анимация
+   ========================================================================= */
+.buffs-row { display: flex; gap: 3px; margin-top: 2px; }
+.buff-badge { font-size: 13px; background: rgba(0,0,0,0.35); border-radius: 4px; padding: 0 3px; }
+
+@keyframes buff-positive-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(52, 152, 219, 0); }
+    50% { box-shadow: 0 0 20px 5px rgba(52, 152, 219, 0.85); }
+}
+.fx-buff-positive { animation: buff-positive-kf 0.55s ease-in-out; }
+
+@keyframes buff-negative-kf {
+    0%, 100% { box-shadow: 0 0 0 rgba(142, 68, 173, 0); }
+    50% { box-shadow: 0 0 20px 5px rgba(142, 68, 173, 0.85); }
+}
+.fx-buff-negative { animation: buff-negative-kf 0.55s ease-in-out; }
+
+.special-btn { background: linear-gradient(135deg, #34495e, #2c3e50); border: 2px solid #8e44ad; }
+.special-btn:hover:not(:disabled) { background: linear-gradient(135deg, #3d566e, #34495e); }

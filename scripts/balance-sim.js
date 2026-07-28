@@ -1,9 +1,10 @@
-// scripts/balance-sim.js (v1.02)
+// scripts/balance-sim.js (v1.03)
 //
 // Офлайн-симулятор баланса. Гоняет тысячи автобоёв "бот против бота" на
 // случайных командах и случайных аренах, считает винрейт каждого героя.
-// Учитывает всю боевую механику v1.02: прогрессивное открытие умений по
-// ходам, яд/ожог (DOT), массовые умения (aoe).
+// Учитывает всю боевую механику v1.03: прогрессивное открытие умений по
+// ходам, DOT (яд/ожог), массовые умения (aoe), бафы/дебафы, dispel, призыв
+// спутника (Кощей/Леший) и оглушение (заложено в движке на будущее).
 //
 // Запуск: node scripts/balance-sim.js  (или npm run balance)
 
@@ -12,7 +13,8 @@ import { arenas } from '../js/arenas.js';
 import { chooseBotAction } from '../js/bot.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
-    applyStatusEffects, applySkillDot
+    applyStatusEffects, applySkillDot,
+    tickBuffs, hasBuff, addBuff, dispelBuffs
 } from '../js/engine.js';
 import { writeFileSync } from 'fs';
 
@@ -32,12 +34,36 @@ function applySingleResult(result) {
     }
 }
 
-function runAoe(active, skill, allies, enemies, arena) {
+function runAoeAttackOrHeal(active, skill, allies, enemies, arena) {
     const targets = (skill.type === 'attack' ? enemies : allies).filter(c => c.hp > 0);
     targets.forEach(target => {
         const result = resolveAction({ attacker: active, target, skill, arena });
         applySingleResult(result);
     });
+}
+
+function runBuffOrDispel(active, skill, target, allies, enemies) {
+    const resolveTeam = (who) => {
+        if (who === 'self') return [active];
+        return (who === 'ally' ? allies : enemies).filter(c => c.hp > 0);
+    };
+    if (skill.type === 'buff') {
+        const pool = resolveTeam(skill.buffTarget);
+        const targets = skill.aoe ? pool : (target && target.hp > 0 ? [target] : pool.slice(0, 1));
+        targets.forEach(t => skill.effects.forEach(effect => addBuff(t, effect)));
+    } else {
+        const pool = resolveTeam(skill.dispelTarget);
+        const targets = skill.aoe ? pool : (target && target.hp > 0 ? [target] : pool.slice(0, 1));
+        targets.forEach(t => dispelBuffs(t));
+    }
+}
+
+function runSummon(active, skill) {
+    if (hasBuff(active, 'companion')) {
+        active.hp = Math.min(active.maxHp, active.hp + skill.companion.procHeal);
+    } else {
+        addBuff(active, { stat: 'companion', value: skill.companion.procDmg, turns: 99, dispellable: true, meta: skill.companion });
+    }
 }
 
 function runOneBattle(teamAIds, teamBIds, arena) {
@@ -63,10 +89,13 @@ function runOneBattle(teamAIds, teamBIds, arena) {
 
         active.turnsTaken++;
         tickCooldowns(active);
+        tickBuffs(active);
 
         const isTeamA = teamA.includes(active);
         const allies = isTeamA ? teamA : teamB;
         const enemies = isTeamA ? teamB : teamA;
+
+        if (hasBuff(active, 'stun')) continue; // оглушён - пропускает ход
 
         const arenaEffect = applyArenaTurnStart(active, arena);
         if (arenaEffect) {
@@ -76,12 +105,31 @@ function runOneBattle(teamAIds, teamBIds, arena) {
         applyStatusEffects(active);
         if (active.hp <= 0) continue;
 
+        // Прок спутника (Кощей/Леший)
+        const companionBuff = active.buffs && active.buffs.find(b => b.stat === 'companion');
+        if (companionBuff) {
+            const aliveFoes = enemies.filter(c => c.hp > 0);
+            if (aliveFoes.length) {
+                const weakest = [...aliveFoes].sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+                weakest.hp = Math.max(0, weakest.hp - companionBuff.value);
+                if (weakest.hp <= 0) continue;
+            }
+        }
+
         const action = chooseBotAction(active, allies, enemies, arena, DIFFICULTY);
         if (!action) continue;
         const { skill, target } = action;
 
+        if (skill.type === 'buff' || skill.type === 'dispel') {
+            runBuffOrDispel(active, skill, target, allies, enemies);
+            continue;
+        }
+        if (skill.type === 'summon') {
+            runSummon(active, skill);
+            continue;
+        }
         if (skill.aoe) {
-            runAoe(active, skill, allies, enemies, arena);
+            runAoeAttackOrHeal(active, skill, allies, enemies, arena);
             continue;
         }
 
@@ -122,9 +170,9 @@ function main() {
         return { name: c.name, price: c.price, appearances: app, winRate: parseFloat(winRate) };
     }).sort((a, b) => b.winRate - a.winRate);
 
-    let md = `# Отчёт по балансу v1.02 (симуляция бот-vs-бот, сложность "${DIFFICULTY}")\n\n`;
+    let md = `# Отчёт по балансу v1.03 (симуляция бот-vs-бот, сложность "${DIFFICULTY}")\n\n`;
     md += `Итераций: ${ITERATIONS}, случайные команды 3v3 из ${baseCharacters.length} героев, случайная арена на каждый бой. `;
-    md += `Учитывает прогрессивное открытие умений по ходам, DOT (яд/ожог) и массовые умения.\n\n`;
+    md += `Учитывает прогрессивное открытие умений, DOT, массовые умения, бафы/дебафы, dispel и призыв спутника.\n\n`;
     md += `| Герой | Цена | Появлений | Винрейт |\n|---|---|---|---|\n`;
     rows.forEach(r => {
         md += `| ${r.name} | ${r.price} 💰 | ${r.appearances} | ${r.winRate}% |\n`;

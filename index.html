@@ -4,16 +4,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta charset="UTF-8">
     <title>Битва Богатырей</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Yeseva+One&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="version-badge">v1.02</div>
+    <div class="version-badge">v1.03</div>
 
-    <h1 class="game-title">Битва Богатырей</h1>
-    <div class="game-subtitle">Легенды Руси</div>
-    <div class="title-ornament">❈ ❈ ❈</div>
+    <div class="title-wrap">
+        <img src="assets/title_logo.png" alt="Битва Богатырей: Легенды Руси" class="game-title-img">
+    </div>
 
     <!-- 1. ЭКРАН ВЫБОРА И СОЗДАНИЯ ПРОФИЛЯ -->
     <div id="screen-auth" class="screen" style="display: none;">
@@ -21,6 +19,8 @@
         <div id="auth-create">
             <h2>Создание профиля</h2>
             <input type="text" id="input-name" placeholder="Введите ваше имя">
+            <p>Выберите картинку профиля:</p>
+            <div id="avatar-picker" class="avatar-picker"></div>
             <p>Выберите ровно 3 стартовых героя:</p>
             <div id="auth-heroes-list" class="heroes-grid"></div>
             <div id="auth-hero-details" class="hero-details-panel"></div>
@@ -32,9 +32,9 @@
         <div id="auth-load" style="display: none;">
             <h2>Выберите профиль:</h2>
             <div id="profiles-list" class="heroes-grid"></div>
-            <div style="margin-top: 20px;">
+            <div style="margin-top: 20px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
                 <button id="btn-continue" class="primary-btn" disabled>Продолжить игру</button>
-                <button id="btn-delete-profile" class="danger-btn" disabled>Удалить</button>
+                <button id="btn-delete-profile" class="danger-btn small-btn" disabled>Удалить профиль</button>
             </div>
             <button id="btn-new-profile" style="margin-top: 20px;">+ Создать новый профиль</button>
         </div>
@@ -51,9 +51,9 @@
 
         <div class="difficulty-picker">
             <span>Сложность бота:</span>
-            <label><input type="radio" name="difficulty" value="easy"> Лёгкая</label>
-            <label><input type="radio" name="difficulty" value="normal"> Средняя</label>
-            <label><input type="radio" name="difficulty" value="hard"> Сложная</label>
+            <label><input type="radio" name="difficulty" value="easy"> Лёгкая (+25💰)</label>
+            <label><input type="radio" name="difficulty" value="normal"> Средняя (+50💰)</label>
+            <label><input type="radio" name="difficulty" value="hard"> Сложная (+90💰)</label>
         </div>
 
         <div class="menu-actions" style="margin-top: 20px; margin-bottom: 20px;">
@@ -70,10 +70,20 @@
     <!-- 2.2 ОТДЕЛЬНЫЙ ЭКРАН МАГАЗИНА -->
     <div id="screen-shop" class="screen" style="display: none;">
         <div class="shop-header">
-            <h2 style="margin:0;">Магазин Героев</h2>
+            <h2 style="margin:0;">Магазин</h2>
             <div>Баланс: <b id="ui-coins" style="color: #f1c40f;">0</b> 💰</div>
         </div>
-        <div id="ui-shop-heroes" class="heroes-grid"></div>
+        <div class="shop-tabs">
+            <button id="tab-shop-heroes" class="shop-tab active">🧑‍🤝‍🧑 Герои</button>
+            <button id="tab-shop-skins" class="shop-tab">🎨 Образы</button>
+        </div>
+        <div id="shop-heroes-panel">
+            <div id="ui-shop-heroes" class="heroes-grid"></div>
+        </div>
+        <div id="shop-skins-panel" style="display:none;">
+            <p class="skins-hint">Образы можно купить только для уже открытых героев. Экипировка/снятие — бесплатно и в любой момент.</p>
+            <div id="ui-shop-skins" class="heroes-grid"></div>
+        </div>
         <div id="shop-hero-details" class="hero-details-panel"></div>
         <button id="btn-shop-back" class="danger-btn" style="margin-top: 20px;">Назад в дружину</button>
     </div>

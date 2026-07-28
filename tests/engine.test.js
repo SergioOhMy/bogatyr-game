@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
     computeAttackDamage, computeHealAmount, tickCooldowns,
     buildTurnQueue, resolveAction, rollChance,
-    applyStatusEffects, applySkillDot
+    applyStatusEffects, applySkillDot,
+    addBuff, tickBuffs, getBuffValue, hasBuff, dispelBuffs
 } from '../js/engine.js';
 
 function makeFighter(overrides = {}) {
@@ -166,5 +167,51 @@ describe('applySkillDot + applyStatusEffects (яд/ожог)', () => {
         target.statusEffects.push({ type: 'poison', amountPerTurn: 20, turnsLeft: 1 });
         applyStatusEffects(target);
         expect(target.hp).toBe(0);
+    });
+});
+
+describe('addBuff + tickBuffs (бафы/дебафы v1.03)', () => {
+    it('нормализует поле turns -> turnsLeft (регрессия: бафы исчезали сразу же)', () => {
+        const target = makeFighter();
+        addBuff(target, { stat: 'defBuff', value: -0.2, turns: 2, dispellable: true });
+        expect(target.buffs.length).toBe(1);
+        expect(target.buffs[0].turnsLeft).toBe(2);
+    });
+
+    it('баф переживает 1 тик из 2 и снимается после второго', () => {
+        const target = makeFighter();
+        addBuff(target, { stat: 'defBuff', value: -0.2, turns: 2 });
+        tickBuffs(target);
+        expect(target.buffs.length).toBe(1);
+        expect(getBuffValue(target, 'defBuff')).toBe(-0.2);
+        tickBuffs(target);
+        expect(target.buffs.length).toBe(0);
+    });
+
+    it('defBuff корректно снижает входящий урон в computeAttackDamage', () => {
+        const attacker = makeFighter();
+        const target = makeFighter();
+        addBuff(target, { stat: 'defBuff', value: -0.5, turns: 2 });
+        const dmg = computeAttackDamage({ dmg: 100, type: 'attack' }, attacker, target);
+        expect(dmg).toBe(50);
+    });
+
+    it('dispelBuffs снимает только dispellable-эффекты', () => {
+        const target = makeFighter();
+        addBuff(target, { stat: 'defBuff', value: -0.2, turns: 2, dispellable: true });
+        addBuff(target, { stat: 'companion', value: 10, turns: 99, dispellable: false });
+        const removed = dispelBuffs(target);
+        expect(removed).toBe(1);
+        expect(target.buffs.length).toBe(1);
+        expect(target.buffs[0].stat).toBe('companion');
+    });
+
+    it('companion-баф переживает несколько тиков (регрессия: спутник исчезал после одного хода)', () => {
+        const owner = makeFighter();
+        addBuff(owner, { stat: 'companion', value: 18, turns: 99, meta: { icon: '💀', label: 'Скелет' } });
+        tickBuffs(owner);
+        tickBuffs(owner);
+        tickBuffs(owner);
+        expect(hasBuff(owner, 'companion')).toBe(true);
     });
 });

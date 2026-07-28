@@ -18,7 +18,7 @@ export const specialCharacters = [
         promoOnly: true,
         skills: [
             { name: 'Коготь', icon: '🐾', dmg: 30, type: 'attack', cooldown: 0 },
-            { name: 'Волчий укус', icon: '🩸', dmg: 55, type: 'attack', cooldown: 2 },
+            { name: 'Волчий инстинкт', icon: '🐺', type: 'buff', cooldown: 2, desc: 'Себе: +40% урона на 1 ход', buffTarget: 'self', effects: [{ stat: 'dmgBuff', value: 0.40, turns: 1, dispellable: true }] },
             { name: 'Волчья регенерация', icon: '🌙', dmg: -45, type: 'heal', cooldown: 3 },
             { name: 'Полнолуние', icon: '🌕', dmg: 100, type: 'attack', cooldown: 5, isUltimate: true }
         ],

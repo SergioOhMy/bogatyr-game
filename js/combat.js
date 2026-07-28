@@ -1,14 +1,15 @@
-import { state, winBattle, recordLoss, clearPendingPromoHero, currentProfile } from './state.js';
+import { state, winBattle, recordLoss, clearPendingPromoHero, currentProfile, DIFFICULTY_REWARDS } from './state.js';
 import { showMenu } from './main.js';
 import { initHeroStats, baseCharacters } from './characters.js';
 import {
     log, renderBattlefield, renderSkills, checkActionState,
     playHitFx, playMissFx, playDodgeFx, playBlockFx,
-    playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx
+    playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx, playBuffFx
 } from './ui.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
-    applyStatusEffects, applySkillDot
+    applyStatusEffects, applySkillDot,
+    tickBuffs, hasBuff, addBuff, dispelBuffs
 } from './engine.js';
 import { getArenaById } from './arenas.js';
 import { chooseBotAction } from './bot.js';
@@ -54,12 +55,25 @@ export function startCombat(arenaId, difficulty) {
 export function onTargetSelect(char) {
     let activeChar = state.turnQueue[state.currentTurnIndex];
     if (activeChar.isBot || char.hp <= 0) return;
-    if (state.selectedSkill && state.selectedSkill.aoe) return; // цель не нужна - умение массовое
 
-    if (state.selectedSkill) {
-        if (state.selectedSkill.type === 'attack' && !char.isBot) return;
-        if (state.selectedSkill.type === 'heal' && char.isBot) return;
+    const skill = state.selectedSkill;
+    if (!skill) {
+        // Пока навык не выбран - просто позволяем "посмотреть" на бойца
+        state.selectedTarget = char;
+        renderBattlefield(onTargetSelect);
+        checkActionState();
+        return;
     }
+
+    // Эти виды умений не требуют клика по цели вообще (см. onSkillSelect)
+    if (skill.aoe || skill.type === 'summon' || (skill.type === 'buff' && skill.buffTarget === 'self')) return;
+
+    const wantsAlly = skill.type === 'heal' ||
+        (skill.type === 'buff' && skill.buffTarget === 'ally') ||
+        (skill.type === 'dispel' && skill.dispelTarget === 'ally');
+    const clickedIsAlly = state.playerTeam.includes(char);
+    if (wantsAlly !== clickedIsAlly) return; // клик не по той команде для этого умения
+
     state.selectedTarget = char;
     renderBattlefield(onTargetSelect);
     checkActionState();
@@ -68,8 +82,17 @@ export function onTargetSelect(char) {
 export function onSkillSelect(skill) {
     state.selectedSkill = skill;
 
+    if (skill.type === 'summon' || (skill.type === 'buff' && skill.buffTarget === 'self')) {
+        // Себя касается умение - целиться не нужно
+        state.selectedTarget = { self: true };
+        renderBattlefield(onTargetSelect);
+        renderSkills(state.turnQueue[state.currentTurnIndex], onSkillSelect);
+        checkActionState();
+        return;
+    }
+
     if (skill.aoe) {
-        // Массовое умение - цель выбирать не нужно, бьёт/лечит всех разом
+        // Массовое умение - цель выбирать не нужно, бьёт/лечит/бафает всех разом
         state.selectedTarget = { aoe: true };
         renderBattlefield(onTargetSelect);
         renderSkills(state.turnQueue[state.currentTurnIndex], onSkillSelect);
@@ -77,10 +100,14 @@ export function onSkillSelect(skill) {
         return;
     }
 
-    let validTargets = skill.type === 'heal' ? state.playerTeam.filter(p => p.hp > 0) : state.enemyTeam.filter(e => e.hp > 0);
+    const wantsAlly = skill.type === 'heal' ||
+        (skill.type === 'buff' && skill.buffTarget === 'ally') ||
+        (skill.type === 'dispel' && skill.dispelTarget === 'ally');
+    const validTargets = wantsAlly ? state.playerTeam.filter(p => p.hp > 0) : state.enemyTeam.filter(e => e.hp > 0);
 
-    if (!state.selectedTarget || state.selectedTarget.aoe || state.selectedTarget.hp <= 0 ||
-        (skill.type === 'heal' && state.selectedTarget.isBot) || (skill.type === 'attack' && !state.selectedTarget.isBot)) {
+    const currentTargetInvalid = !state.selectedTarget || state.selectedTarget.aoe || state.selectedTarget.self ||
+        state.selectedTarget.hp <= 0 || !validTargets.includes(state.selectedTarget);
+    if (currentTargetInvalid) {
         state.selectedTarget = validTargets[0];
     }
     renderBattlefield(onTargetSelect);
@@ -102,6 +129,14 @@ export function startTurn() {
 
     activeChar.turnsTaken++;
     tickCooldowns(activeChar);
+    tickBuffs(activeChar);
+
+    // Оглушение (stun): пропускаем ход целиком, эффект уже снят тиком выше
+    if (hasBuff(activeChar, 'stun')) {
+        log(`💫 <b>${activeChar.name}</b> оглушён и пропускает ход!`);
+        nextTurn();
+        return;
+    }
 
     // Эффект начала хода: сперва арена (лечение нежити в болоте и т.п.),
     // затем яд/ожог от навыков (см. characters.js -> skill.dot)
@@ -128,6 +163,29 @@ export function startTurn() {
         renderBattlefield(onTargetSelect);
         setTimeout(checkWinCondition, 400);
         return;
+    }
+
+    // Прок призванного спутника (Кощей/Леший): бьёт слабейшего врага каждый
+    // собственный ход хозяина, пока жив компаньон-баф (см. executeSummonAction)
+    const companionBuff = activeChar.buffs && activeChar.buffs.find(b => b.stat === 'companion');
+    if (companionBuff) {
+        const enemySide = state.playerTeam.includes(activeChar) ? state.enemyTeam : state.playerTeam;
+        const aliveFoes = enemySide.filter(c => c.hp > 0);
+        if (aliveFoes.length > 0) {
+            const weakest = [...aliveFoes].sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+            const meta = companionBuff.meta || { icon: '👥', label: 'Спутник' };
+            weakest.hp = Math.max(0, weakest.hp - companionBuff.value);
+            log(`${meta.icon} ${meta.label} <b>${activeChar.name}</b> кусает <b>${weakest.name}</b> и наносит ${companionBuff.value} урона!`);
+            playHitFx(weakest, { crit: false, amount: companionBuff.value });
+            if (weakest.hp <= 0) {
+                weakest.hp = 0;
+                log(`<span class="death-log">💀 ${weakest.name} погибает!</span>`);
+                playDeathFx(weakest);
+                renderBattlefield(onTargetSelect);
+                setTimeout(checkWinCondition, 400);
+                return;
+            }
+        }
     }
 
     document.getElementById('turn-indicator').innerText = `Ходит: ${activeChar.name}`;
@@ -178,6 +236,14 @@ function handleTurnTimeout(activeChar) {
 }
 
 export function executeAction(attacker, target, skill, isDoubleCast = false) {
+    if (skill.type === 'buff' || skill.type === 'dispel') {
+        executeBuffOrDispelAction(attacker, skill, target);
+        return;
+    }
+    if (skill.type === 'summon') {
+        executeSummonAction(attacker, skill);
+        return;
+    }
     if (skill.aoe) {
         executeAoeAction(attacker, skill);
         return;
@@ -253,6 +319,84 @@ export function executeAction(attacker, target, skill, isDoubleCast = false) {
 
     renderBattlefield(onTargetSelect);
     setTimeout(checkWinCondition, 800);
+}
+
+// Баф/дебаф/dispel (v1.03). Одна функция обрабатывает и одиночную цель,
+// и массовые варианты (skill.aoe) - какая команда получает эффект, зависит
+// от buffTarget/dispelTarget и от того, на чьей стороне сам применяющий.
+function executeBuffOrDispelAction(attacker, skill, target) {
+    clearInterval(state.timerInterval);
+    document.getElementById('execute-btn').disabled = true;
+    attacker.currentCooldowns[skill.name] = skill.cooldown;
+    if (!attacker.isBot) state.playerSkipStreak = 0;
+
+    const { restore } = applyTemporaryBoosts(attacker);
+    const isPlayerSide = state.playerTeam.includes(attacker);
+
+    const resolveTeam = (who) => {
+        if (who === 'self') return [attacker];
+        const isAllyTeam = who === 'ally';
+        const team = isAllyTeam ? (isPlayerSide ? state.playerTeam : state.enemyTeam)
+                                : (isPlayerSide ? state.enemyTeam : state.playerTeam);
+        return team.filter(c => c.hp > 0);
+    };
+
+    let targets;
+    if (skill.type === 'buff') {
+        const pool = resolveTeam(skill.buffTarget);
+        targets = skill.aoe ? pool : (target && target.hp > 0 ? [target] : pool.slice(0, 1));
+    } else {
+        const pool = resolveTeam(skill.dispelTarget);
+        targets = skill.aoe ? pool : (target && target.hp > 0 ? [target] : pool.slice(0, 1));
+    }
+
+    log(`${skill.icon} <b>${attacker.name}</b> применяет <i>${skill.name}</i>!`);
+
+    if (skill.type === 'buff') {
+        targets.forEach(t => {
+            skill.effects.forEach(effect => addBuff(t, effect));
+            playBuffFx(t, { positive: skill.buffTarget !== 'enemy' });
+        });
+    } else {
+        targets.forEach(t => {
+            const removed = dispelBuffs(t);
+            if (removed > 0) log(`✨ С <b>${t.name}</b> снято эффектов: ${removed}.`);
+            playBuffFx(t, { positive: true });
+        });
+    }
+
+    restore();
+    renderBattlefield(onTargetSelect);
+    setTimeout(checkWinCondition, 700);
+}
+
+// Призыв спутника (Кощей - скелет, Леший - медведь). Упрощённая модель:
+// вместо отдельной боевой единицы на поле спутник даёт хозяину длительный
+// баф-паразит "companion", который каждый ход хозяина наносит фиксированный
+// урон слабейшему врагу (см. startTurn). Пока спутник активен, эта же
+// кнопка превращается в "Лечить спутника" (восстанавливает HP хозяину).
+function executeSummonAction(attacker, skill) {
+    clearInterval(state.timerInterval);
+    document.getElementById('execute-btn').disabled = true;
+    if (!attacker.isBot) state.playerSkipStreak = 0;
+
+    const alreadySummoned = hasBuff(attacker, 'companion');
+
+    if (alreadySummoned) {
+        const healAmount = skill.companion.procHeal;
+        attacker.hp = Math.min(attacker.maxHp, attacker.hp + healAmount);
+        log(`${skill.companion.icon} <b>${attacker.name}</b> подлечивает своего ${skill.companion.label.toLowerCase()}а и заодно восстанавливает ${healAmount} ХП себе.`);
+        playHealFx(attacker, healAmount, {});
+        attacker.currentCooldowns[skill.name] = Math.max(1, Math.round(skill.cooldown / 2));
+    } else {
+        addBuff(attacker, { stat: 'companion', value: skill.companion.procDmg, turns: 99, dispellable: true, meta: skill.companion });
+        log(`${skill.companion.icon} <b>${attacker.name}</b> призывает ${skill.companion.label.toLowerCase()}а на помощь!`);
+        playBuffFx(attacker, { positive: true });
+        attacker.currentCooldowns[skill.name] = skill.cooldown;
+    }
+
+    renderBattlefield(onTargetSelect);
+    setTimeout(checkWinCondition, 700);
 }
 
 // Массовое умение (aoe: true) - бьёт/лечит всю живую вражескую или свою
@@ -373,9 +517,10 @@ function checkWinCondition() {
         }, 600);
     } else if (aliveBots === 0) {
         setTimeout(() => {
-            winBattle();
+            winBattle(state.difficulty);
             finishBattle();
-            alert('Победа! Слава вашей дружине! Вы получили 50 монет 💰');
+            const reward = DIFFICULTY_REWARDS[state.difficulty] || DIFFICULTY_REWARDS.normal;
+            alert(`Победа! Слава вашей дружине! Вы получили ${reward} монет 💰`);
             showMenu();
         }, 600);
     } else {
