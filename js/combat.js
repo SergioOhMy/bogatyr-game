@@ -1,15 +1,16 @@
 import { state, winBattle, recordLoss, clearPendingPromoHero, currentProfile, DIFFICULTY_REWARDS } from './state.js';
 import { showMenu, showPostBattleChest } from './main.js';
-import { initHeroStats, baseCharacters } from './characters.js';
+import { initHeroStats, baseCharacters, createCompanion } from './characters.js';
 import {
     log, clearLog, renderBattlefield, renderSkills, checkActionState,
     playHitFx, playMissFx, playDodgeFx, playBlockFx,
-    playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx, playBuffFx, pulseCompanion
+    playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx, playBuffFx
 } from './ui.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
-    applyStatusEffects, applySkillDot,
-    tickBuffs, hasBuff, addBuff, dispelBuffs, shuffle
+    applyStatusEffects, applySkillDot, computeAttackDamage,
+    tickBuffs, hasBuff, addBuff, dispelBuffs, shuffle,
+    findCompanion, livingHeroes, insertIntoQueue
 } from './engine.js';
 import { getArenaById } from './arenas.js';
 import { chooseBotAction } from './bot.js';
@@ -70,6 +71,15 @@ export function startCombat(arenaId, difficulty) {
     startTurn();
 }
 
+/**
+ * Лечение "только себе" (healTarget: 'self'). Такие умения не требуют выбора
+ * цели: отдых на печи Емели, тесто по сусекам Колобка, волчья регенерация
+ * Волколака — по смыслу их нельзя направить на союзника.
+ */
+export function isSelfHeal(skill) {
+    return skill.type === 'heal' && skill.healTarget === 'self';
+}
+
 export function onTargetSelect(char) {
     let activeChar = state.turnQueue[state.currentTurnIndex];
     if (activeChar.isBot || char.hp <= 0) return;
@@ -84,7 +94,7 @@ export function onTargetSelect(char) {
     }
 
     // Эти виды умений не требуют клика по цели вообще (см. onSkillSelect)
-    if (skill.aoe || skill.type === 'summon' || (skill.type === 'buff' && skill.buffTarget === 'self')) return;
+    if (skill.aoe || skill.type === 'summon' || (skill.type === 'buff' && skill.buffTarget === 'self') || isSelfHeal(skill)) return;
 
     const wantsAlly = skill.type === 'heal' ||
         (skill.type === 'buff' && skill.buffTarget === 'ally') ||
@@ -100,7 +110,7 @@ export function onTargetSelect(char) {
 export function onSkillSelect(skill) {
     state.selectedSkill = skill;
 
-    if (skill.type === 'summon' || (skill.type === 'buff' && skill.buffTarget === 'self')) {
+    if (skill.type === 'summon' || (skill.type === 'buff' && skill.buffTarget === 'self') || isSelfHeal(skill)) {
         // Себя касается умение - целиться не нужно
         state.selectedTarget = { self: true };
         renderBattlefield(onTargetSelect);
@@ -189,30 +199,6 @@ export function startTurn() {
         return;
     }
 
-    // Прок призванного спутника (Кощей/Леший): бьёт слабейшего врага каждый
-    // собственный ход хозяина, пока жив компаньон-баф (см. executeSummonAction)
-    const companionBuff = activeChar.buffs && activeChar.buffs.find(b => b.stat === 'companion');
-    if (companionBuff) {
-        const enemySide = state.playerTeam.includes(activeChar) ? state.enemyTeam : state.playerTeam;
-        const aliveFoes = enemySide.filter(c => c.hp > 0);
-        if (aliveFoes.length > 0) {
-            const weakest = [...aliveFoes].sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
-            const meta = companionBuff.meta || { icon: '👥', label: 'Спутник' };
-            weakest.hp = Math.max(0, weakest.hp - companionBuff.value);
-            log(`${meta.icon} ${meta.label} <b>${activeChar.name}</b> кусает <b>${weakest.name}</b> и наносит ${companionBuff.value} урона!`);
-            playHitFx(weakest, { crit: false, amount: companionBuff.value });
-            pulseCompanion(activeChar.id);
-            if (weakest.hp <= 0) {
-                weakest.hp = 0;
-                log(`<span class="death-log">💀 ${weakest.name} погибает!</span>`);
-                playDeathFx(weakest);
-                renderBattlefield(onTargetSelect);
-                setTimeout(checkWinCondition, 400);
-                return;
-            }
-        }
-    }
-
     document.getElementById('turn-indicator').innerText = `Ходит: ${activeChar.name}`;
 
     const actionBtn = document.getElementById('execute-btn');
@@ -263,7 +249,7 @@ function handleTurnTimeout(activeChar) {
         setTimeout(() => {
             recordLoss();
             alert('Поражение! Два пропущенных хода подряд — бой проигран автоматически.');
-            showPostBattleChest(showMenu);
+            showMenu(); // сундук выдаётся только за победу
         }, 600);
         return;
     }
@@ -273,12 +259,20 @@ function handleTurnTimeout(activeChar) {
 }
 
 export function executeAction(attacker, target, skill, isDoubleCast = false) {
+    // У самолечения цели нет — из интерфейса сюда приходит заглушка {self:true},
+    // поэтому подставляем самого применяющего до всех остальных веток.
+    if (isSelfHeal(skill)) target = attacker;
+
     if (skill.type === 'buff' || skill.type === 'dispel') {
         executeBuffOrDispelAction(attacker, skill, target);
         return;
     }
     if (skill.type === 'summon') {
         executeSummonAction(attacker, skill);
+        return;
+    }
+    if (skill.type === 'drain') {
+        executeDrainAction(attacker, skill, target);
         return;
     }
     if (skill.aoe) {
@@ -411,33 +405,73 @@ function executeBuffOrDispelAction(attacker, skill, target) {
     setTimeout(checkWinCondition, 700);
 }
 
-// Призыв спутника (Кощей - скелет, Леший - медведь). Упрощённая модель:
-// вместо отдельной боевой единицы на поле спутник даёт хозяину длительный
-// баф-паразит "companion", который каждый ход хозяина наносит фиксированный
-// урон слабейшему врагу (см. startTurn). Пока спутник активен, эта же
-// кнопка превращается в "Лечить спутника" (восстанавливает HP хозяину).
+// Призыв помощника (Кощей — скелет, Леший — медведь).
+//
+// Помощник теперь настоящий боец в той же команде: со своими ХП, своей
+// карточкой и своим местом в очереди ходов (см. characters.js ->
+// createCompanion). Пока он жив, та же кнопка становится "Лечить <помощника>"
+// и лечит именно ЕГО, а не хозяина, причём без отката — так и просили.
 function executeSummonAction(attacker, skill) {
     clearInterval(state.timerInterval);
     document.getElementById('execute-btn').disabled = true;
     if (!attacker.isBot) state.playerSkipStreak = 0;
 
-    const alreadySummoned = hasBuff(attacker, 'companion');
+    const team = state.playerTeam.includes(attacker) ? state.playerTeam : state.enemyTeam;
+    const existing = findCompanion(team, attacker);
 
-    if (alreadySummoned) {
-        const healAmount = skill.companion.procHeal;
-        attacker.hp = Math.min(attacker.maxHp, attacker.hp + healAmount);
-        log(`${skill.companion.icon} <b>${attacker.name}</b> подлечивает своего ${skill.companion.label.toLowerCase()}а и заодно восстанавливает ${healAmount} ХП себе.`);
-        playHealFx(attacker, healAmount, {});
-        attacker.currentCooldowns[skill.name] = Math.max(1, Math.round(skill.cooldown / 2));
+    if (existing) {
+        const healAmount = skill.companion.heal;
+        const before = existing.hp;
+        existing.hp = Math.min(existing.maxHp, existing.hp + healAmount);
+        const healed = existing.hp - before;
+        log(`${skill.companion.icon} <b>${attacker.name}</b> латает своего помощника — <b>${existing.name}</b> восстанавливает ${healed} ХП.`);
+        playHealFx(existing, healed, {});
+        attacker.currentCooldowns[skill.name] = 0; // лечение помощника без отката
     } else {
-        addBuff(attacker, { stat: 'companion', value: skill.companion.procDmg, turns: 99, dispellable: true, meta: skill.companion });
-        log(`${skill.companion.icon} <b>${attacker.name}</b> призывает ${skill.companion.label.toLowerCase()}а на помощь!`);
+        const companion = createCompanion(attacker, skill.companion);
+        team.push(companion);
+        state.currentTurnIndex = insertIntoQueue(state.turnQueue, companion, state.currentTurnIndex);
+        log(`${skill.companion.icon} <b>${attacker.name}</b> призывает помощника: <b>${companion.name}</b> (${companion.maxHp} ХП) вступает в бой!`);
         playBuffFx(attacker, { positive: true });
         attacker.currentCooldowns[skill.name] = skill.cooldown;
     }
 
     renderBattlefield(onTargetSelect);
     setTimeout(checkWinCondition, 700);
+}
+
+// Вампиризм ("Вытягивание душ" Кощея): отнимает у врага здоровье и ровно
+// столько же отдаёт САМОМУ применяющему — не дружине и не выбранному
+// союзнику. Раньше это было обычное лечение, которым Кощей мог подлатать
+// кого угодно, что не соответствовало ни названию, ни задумке умения.
+function executeDrainAction(attacker, skill, target) {
+    clearInterval(state.timerInterval);
+    document.getElementById('execute-btn').disabled = true;
+    attacker.currentCooldowns[skill.name] = skill.cooldown;
+    if (!attacker.isBot) state.playerSkipStreak = 0;
+
+    const { restore } = applyTemporaryBoosts(attacker);
+    const raw = computeAttackDamage(skill, attacker, target, state.currentArena);
+    restore();
+
+    const drained = Math.min(target.hp, raw);
+    target.hp = Math.max(0, target.hp - drained);
+    const before = attacker.hp;
+    attacker.hp = Math.min(attacker.maxHp, attacker.hp + drained);
+    const restored = attacker.hp - before;
+
+    log(`👻 <b>${attacker.name}</b> вытягивает душу из <b>${target.name}</b>: ${drained} урона, себе восстановлено ${restored} ХП.`);
+    playHitFx(target, { crit: false, amount: drained });
+    playHealFx(attacker, restored, {});
+    if (skill.isUltimate) playUltimateFx(attacker, target);
+
+    if (target.hp <= 0) {
+        log(`<span class="death-log">💀 ${target.name} погибает!</span>`);
+        playDeathFx(target);
+    }
+
+    renderBattlefield(onTargetSelect);
+    setTimeout(checkWinCondition, 800);
 }
 
 // Массовое умение (aoe: true) - бьёт/лечит всю живую вражескую или свою
@@ -545,16 +579,37 @@ function finishBattle() {
     }
 }
 
+/**
+ * Помощник живёт ровно столько, сколько его хозяин: если хозяин пал, помощник
+ * уходит с ним. Собрано в одном месте (вызывается перед проверкой победы),
+ * чтобы не дублировать это в каждой ветке, где кто-то может умереть.
+ */
+function cleanupCompanions() {
+    [state.playerTeam, state.enemyTeam].forEach(team => {
+        team.forEach(unit => {
+            if (!unit.isCompanion || unit.hp <= 0) return;
+            const owner = team.find(c => c.id === unit.ownerId);
+            if (!owner || owner.hp <= 0) {
+                unit.hp = 0;
+                log(`${unit.icon || '👥'} <b>${unit.name}</b> рассыпается — его хозяин пал.`);
+            }
+        });
+    });
+}
+
 function checkWinCondition() {
-    let alivePlayers = state.playerTeam.filter(p => p.hp > 0).length;
-    let aliveBots = state.enemyTeam.filter(e => e.hp > 0).length;
+    cleanupCompanions();
+    // Считаем только настоящих героев: бой не выигран тем, что у противника
+    // остался один призванный скелет, и не проигран потерей помощника.
+    let alivePlayers = livingHeroes(state.playerTeam).length;
+    let aliveBots = livingHeroes(state.enemyTeam).length;
 
     if (alivePlayers === 0) {
         setTimeout(() => {
             recordLoss();
             finishBattle();
             alert('Поражение! Вражеские богатыри оказались сильнее.');
-            showPostBattleChest(showMenu);
+            showMenu(); // сундук выдаётся только за победу
         }, 600);
     } else if (aliveBots === 0) {
         setTimeout(() => {

@@ -2,13 +2,13 @@ import {
     state, currentProfile, allProfiles, loadProfile, createProfile,
     deleteProfile, buyHero, selectProfile, setDifficulty, redeemPromoCode,
     buySkin, equipSkin, addWeaponToInventory, equipWeapon, sellWeapon,
-    INVENTORY_CAPACITY, grantChestReward
+    INVENTORY_CAPACITY, grantChestReward, isInventoryFull
 } from './state.js';
 import { baseCharacters, passivesSystem } from './characters.js';
 import { arenas } from './arenas.js';
 import { specialCharacters, getSpecialCharacterById, resolvePromoCode } from './promocodes.js';
 import { getSkinsForHero, getHeroImage } from './skins.js';
-import { weaponCatalog, getWeaponById, getRandomWeapon } from './items.js';
+import { weaponCatalog, getWeaponById, getRandomWeapon, getDroppableWeapons } from './items.js';
 import { startCombat, executeAction, setArenaBackdrop } from './combat.js';
 import { renderHeroDetails, renderInventoryHeroStats } from './ui.js';
 
@@ -101,7 +101,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('tab-shop-skins').onclick = () => switchShopTab('skins');
     document.getElementById('tab-shop-chests').onclick = () => switchShopTab('chests');
     document.getElementById('btn-buy-chest').onclick = () => {
-        const CHEST_PRICE = 100;
         if (currentProfile.coins < CHEST_PRICE) { alert('Не хватает монет!'); return; }
         if (!confirm(`Купить сундук с оружием за ${CHEST_PRICE} монет?`)) return;
         currentProfile.coins -= CHEST_PRICE;
@@ -113,6 +112,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             alert(`Сундук открыт! Получено оружие: ${weapon.icon} ${weapon.name}`);
         }
+    };
+    document.getElementById('btn-buy-epic-chest').onclick = () => {
+        if (currentProfile.coins < EPIC_CHEST_PRICE) { alert('Не хватает монет!'); return; }
+        if (isInventoryFull()) { alert(`Инвентарь полон (${INVENTORY_CAPACITY} ячеек) — сначала освободите место.`); return; }
+        if (!confirm(`Купить эпический сундук за ${EPIC_CHEST_PRICE} монет? Оружие выберете сами.`)) return;
+        openEpicChest(() => {
+            document.getElementById('ui-coins').innerText = currentProfile.coins;
+        }, EPIC_CHEST_PRICE);
     };
 
     // Инвентарь
@@ -544,14 +551,11 @@ function renderInventoryActiveHero(roster) {
 }
 
 // --------------------- Выбор оружия в слот героя ---------------------
-/** Свободные (не надетые ни на кого) копии оружия: id -> сколько штук. */
+/** Свободные копии оружия, свёрнутые в пары id -> количество (для окна выбора). */
 function getFreeWeaponCounts() {
-    const total = {};
-    currentProfile.inventory.forEach(id => { total[id] = (total[id] || 0) + 1; });
-    Object.values(currentProfile.equippedWeapons).forEach(id => {
-        if (id && total[id]) total[id]--;
-    });
-    return total;
+    const counts = {};
+    getFreeWeaponInstances().forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+    return counts;
 }
 
 function openWeaponPicker(hero) {
@@ -603,23 +607,32 @@ function closeWeaponPicker() {
     document.getElementById('weapon-picker-backdrop').style.display = 'none';
 }
 
+/**
+ * Список СВОБОДНЫХ (не надетых ни на кого) копий оружия — по одному элементу
+ * на каждую копию. Одинаковые копии больше не схлопываются в одну ячейку со
+ * значком "xN": каждая занимает свою ячейку, как и просили.
+ */
+function getFreeWeaponInstances() {
+    const stillEquipped = {};
+    Object.values(currentProfile.equippedWeapons).forEach(id => {
+        if (id) stillEquipped[id] = (stillEquipped[id] || 0) + 1;
+    });
+    const free = [];
+    currentProfile.inventory.forEach(id => {
+        if (stillEquipped[id] > 0) { stillEquipped[id]--; return; } // эта копия надета на героя
+        free.push(id);
+    });
+    return free;
+}
+
 function renderWeaponGrid() {
     const container = document.getElementById('weapon-grid');
     container.innerHTML = '';
 
-    const totalCounts = {};
-    currentProfile.inventory.forEach(id => { totalCounts[id] = (totalCounts[id] || 0) + 1; });
-    const equippedCounts = {};
-    Object.values(currentProfile.equippedWeapons).forEach(id => {
-        if (id) equippedCounts[id] = (equippedCounts[id] || 0) + 1;
-    });
-
-    // Оружие, надетое на героя, "перемещается" из общего инвентаря в его
-    // слот - здесь показываем только СВОБОДНЫЕ (не надетые ни на кого) копии.
-    const availableIds = Object.keys(totalCounts).filter(id => (totalCounts[id] - (equippedCounts[id] || 0)) > 0);
+    const free = getFreeWeaponInstances();
 
     for (let i = 0; i < INVENTORY_CAPACITY; i++) {
-        const weaponId = availableIds[i];
+        const weaponId = free[i];
         const div = document.createElement('div');
 
         if (!weaponId) {
@@ -629,14 +642,16 @@ function renderWeaponGrid() {
         }
 
         const weapon = getWeaponById(weaponId);
-        if (!weapon) continue;
-        const availableCount = totalCounts[weaponId] - (equippedCounts[weaponId] || 0);
+        if (!weapon) { div.className = 'weapon-slot-item empty'; container.appendChild(div); continue; }
         div.className = 'weapon-slot-item' + (inventorySelectedWeaponId === weaponId ? ' selected' : '');
-        div.innerHTML = weapon.icon + (availableCount > 1 ? `<span class="weapon-count-badge">x${availableCount}</span>` : '');
+        div.innerHTML = weapon.icon;
         div.title = weapon.name;
         div.onclick = () => { inventorySelectedWeaponId = weaponId; showInventory(); };
         container.appendChild(div);
     }
+
+    const counter = document.getElementById('inventory-counter');
+    if (counter) counter.textContent = `Занято ячеек: ${currentProfile.inventory.length} из ${INVENTORY_CAPACITY}`;
 }
 
 function renderWeaponDetails(roster) {
@@ -687,8 +702,22 @@ function renderWeaponDetails(roster) {
     };
 }
 
-// --------------------------- Сундук после боя (v1.04) ---------------------------
+// --------------------------- Сундуки ---------------------------
+export const CHEST_PRICE = 100;
+export const EPIC_CHEST_PRICE = 1000;
+/** Шанс, что сундук за победу окажется эпическим (с выбором оружия вручную). */
+const EPIC_CHEST_CHANCE = 0.05;
+
 function openPostBattleChest() {
+    // 5% на эпический сундук: вместо случайного оружия игрок выбирает сам.
+    if (Math.random() < EPIC_CHEST_CHANCE) {
+        document.getElementById('chest-modal-backdrop').style.display = 'none';
+        openEpicChest(() => {
+            if (window.__afterChestCallback) { window.__afterChestCallback(); window.__afterChestCallback = null; }
+        });
+        return;
+    }
+
     const weapon = getRandomWeapon();
     const result = grantChestReward(weapon);
     document.getElementById('chest-stage-closed').style.display = 'none';
@@ -702,7 +731,46 @@ function openPostBattleChest() {
     }
 }
 
-/** Вызывается из combat.js после каждого боя. onDone - что делать после закрытия (обычно showMenu). */
+/**
+ * Эпический сундук: игрок сам выбирает любое выпадающее оружие.
+ *
+ * costCoins списывается ТОЛЬКО в момент реального выбора оружия — если закрыть
+ * окно кнопкой «Отмена», деньги остаются у игрока. Иначе купленный, но не
+ * открытый сундук просто съедал бы 1000 монет.
+ * onDone вызывается после закрытия окна (и после выбора, и после отмены).
+ */
+function openEpicChest(onDone, costCoins = 0) {
+    const backdrop = document.getElementById('epic-chest-backdrop');
+    const grid = document.getElementById('epic-chest-grid');
+    grid.innerHTML = '';
+
+    const close = () => { backdrop.style.display = 'none'; if (onDone) onDone(); };
+
+    if (isInventoryFull()) {
+        grid.innerHTML = `<p class="skins-hint">Инвентарь полон (${INVENTORY_CAPACITY} ячеек). Продайте что-нибудь и загляните снова.</p>`;
+    } else {
+        getDroppableWeapons().forEach(weapon => {
+            const card = document.createElement('div');
+            card.className = 'weapon-picker-item';
+            card.innerHTML = `
+                <div class="weapon-picker-icon">${weapon.icon}</div>
+                <b>${weapon.name}</b>
+            `;
+            card.onclick = () => {
+                if (costCoins > 0) currentProfile.coins -= costCoins;
+                addWeaponToInventory(weapon.id); // внутри вызывает saveProfile()
+                alert(`Получено: ${weapon.icon} ${weapon.name}`);
+                close();
+            };
+            grid.appendChild(card);
+        });
+    }
+
+    document.getElementById('btn-epic-chest-cancel').onclick = close;
+    backdrop.style.display = 'flex';
+}
+
+/** Вызывается из combat.js ТОЛЬКО при победе. onDone - что делать после закрытия (обычно showMenu). */
 export function showPostBattleChest(onDone) {
     document.getElementById('chest-stage-closed').style.display = 'block';
     document.getElementById('chest-stage-result').style.display = 'none';

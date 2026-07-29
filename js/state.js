@@ -163,17 +163,23 @@ export function addWeaponToInventory(weaponId) {
     saveProfile();
 }
 
+/** Инвентарь полон, когда занято 15 ЯЧЕЕК — независимо от того, повторы это или нет. */
+export function isInventoryFull() {
+    return currentProfile.inventory.length >= INVENTORY_CAPACITY;
+}
+
 /**
- * Выдаёт награду за сундук: обычно оружие, но если это НОВЫЙ тип оружия
- * (не дубликат) и инвентарь уже заполнен (INVENTORY_CAPACITY уникальных
- * типов), вместо оружия начисляет монеты по цене продажи этого оружия.
+ * Выдаёт награду за сундук: оружие, а если места нет — монеты по цене продажи.
+ *
+ * Раньше "полным" считался инвентарь из 15 РАЗНЫХ типов, а одинаковые копии
+ * складывались в одну ячейку значком "x6" и лезли сверх лимита. Из-за этого
+ * сундуки вели себя непредсказуемо: то выдавали оружие в переполненную сетку,
+ * то вдруг сообщали "нет места" и давали золото. Теперь правило простое и
+ * одинаковое во всех случаях: одна ячейка — одна единица оружия, всего 15
+ * ячеек, дубликаты занимают отдельные ячейки и не складываются.
  */
 export function grantChestReward(weapon) {
-    const alreadyOwned = currentProfile.inventory.includes(weapon.id);
-    const uniqueCount = new Set(currentProfile.inventory).size;
-    const full = !alreadyOwned && uniqueCount >= INVENTORY_CAPACITY;
-
-    if (full) {
+    if (isInventoryFull()) {
         currentProfile.coins += weapon.sellPrice;
         saveProfile();
         return { type: 'coins', amount: weapon.sellPrice };

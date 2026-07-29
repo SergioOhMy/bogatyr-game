@@ -34,7 +34,8 @@ export const specialCharacters = [
             // Волколак успевал ударить (подробности в characters.js у
             // "Меткого глаза" Алёши).
             { name: 'Волчий инстинкт', icon: '🐺', type: 'buff', cooldown: 3, desc: 'Себе: +40% урона на следующую атаку', buffTarget: 'self', effects: [{ stat: 'dmgBuff', value: 0.40, turns: 2, dispellable: true }] },
-            { name: 'Волчья регенерация', icon: '🌙', dmg: -45, type: 'heal', cooldown: 3 },
+            // Себе: регенерация — свойство самого зверя, лечить ею дружину нельзя
+            { name: 'Волчья регенерация', icon: '🌙', dmg: -45, type: 'heal', healTarget: 'self', cooldown: 3 },
             { name: 'Полнолуние', icon: '🌕', dmg: 100, type: 'attack', cooldown: 5, isUltimate: true }
         ],
         vfx: { color: '#7f5aa8', particle: '🌕' }

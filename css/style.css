@@ -3,38 +3,81 @@ html, body { width: 100%; }
 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #2c3e50; color: white; margin: 0; padding: 20px; overflow-x: hidden; }
 .screen { display: none; width: 100%; max-width: 900px; margin: 0 auto; padding: 20px; text-align: center; }
 
-.card { background: #34495e; border: 3px solid #7f8c8d; border-radius: 10px; padding: 10px; width: 130px; cursor: pointer; transition: 0.2s; position: relative; }
+/* Ширина карточек больше не фиксирована в 130px: её задаёт сетка (по 3 в ряд),
+   иначе на широком телефоне оставались пустые поля по краям. */
+.card { background: #34495e; border: 3px solid #7f8c8d; border-radius: 10px; padding: 10px; cursor: pointer; transition: 0.2s; position: relative; }
 .card:hover { border-color: #f1c40f; }
 .card.selected { border-color: #2ecc71; background: #27ae60; }
 
-.passive-badge { background: #8e44ad; color: white; font-size: 11px; padding: 3px 5px; border-radius: 4px; margin-top: 5px; display: inline-block; font-weight: bold; }
+.passive-badge { background: #8e44ad; color: white; font-size: 12px; padding: 3px 6px; border-radius: 4px; margin-top: 5px; display: inline-block; font-weight: bold; }
 
-.avatar { 
-    width: 100px; height: 100px; background-color: #1a252f; 
+/* Портрет квадратный и тянется по ширине карточки: чем шире экран, тем крупнее
+   картинка, вместо прежних фиксированных 100px. */
+.avatar {
+    width: 100%; aspect-ratio: 1; height: auto;
+    background-color: #1a252f;
     background-size: cover; background-position: center;
-    border-radius: 5px; margin: 0 auto 10px; 
+    border-radius: 8px; margin: 0 auto 8px;
 }
 
-button { margin-top: 20px; padding: 10px 20px; font-size: 18px; font-weight: bold; cursor: pointer; background: #e67e22; border: none; border-radius: 5px; color: white; transition: 0.2s; }
-button:hover:not(:disabled) { background: #d35400; }
-button:disabled { background: #7f8c8d; cursor: not-allowed; }
+button {
+    margin-top: 16px; padding: 11px 20px; font-size: 17px; font-weight: bold;
+    cursor: pointer; color: white; transition: transform 0.12s, filter 0.15s, box-shadow 0.15s;
+    background: linear-gradient(180deg, #e8883a, #d35400);
+    border: 1px solid rgba(255,255,255,0.28);
+    border-bottom-width: 3px; border-bottom-color: rgba(0,0,0,0.35);
+    border-radius: 10px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+}
+button:hover:not(:disabled) { filter: brightness(1.12); }
+button:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 1px; }
+button:disabled { background: #7f8c8d; border-color: rgba(255,255,255,0.12); box-shadow: none; cursor: not-allowed; }
 
-.battlefield { display: flex; justify-content: space-between; margin-top: 30px; gap: 50px; }
-.team { display: flex; flex-direction: column; gap: 15px; width: 45%; }
+.primary-btn { background: linear-gradient(180deg, #4aa3f0, #2176c7); }
+.danger-btn { background: linear-gradient(180deg, #ef5350, #c0392b); }
 
-.fighter { background: #34495e; padding: 10px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; transition: 0.2s; position: relative; }
-.fighter-content { display: flex; align-items: center; }
+.battlefield { display: flex; justify-content: space-between; margin-top: 0; gap: 8px; }
+/* flex: 1 1 0 вместо width: 50% — иначе рамка team.mine добавляла себе
+   лишние пиксели и столбцы получались разной ширины (138 против 133). */
+.team { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; min-width: 0; }
+
+/* Карточки бойцов ОДИНАКОВОЙ высоты и во всю ширину своей половины.
+   Раньше высота зависела от длины имени и числа значков, из-за чего левый и
+   правый столбцы разъезжались и выглядели неаккуратно. */
+/* Высота ЖЁСТКО одинаковая: имена бойцов разной длины ("Илья Муромец" против
+   "Кощей Бессмертный") переносились на вторую строку и карточки получались
+   от 91 до 130px — столбцы выглядели рваными. Текст теперь обрезается. */
+.fighter {
+    background: rgba(52, 73, 94, 0.92); padding: 7px; border-radius: 10px;
+    border: 2px solid rgba(255,255,255,0.12); cursor: pointer; transition: 0.2s;
+    position: relative; width: 100%; height: 88px; overflow: hidden;
+    display: flex; align-items: center;
+}
+.fighter-content { display: flex; align-items: center; width: 100%; min-width: 0; }
 .fighter.active-turn { border-color: #f1c40f; box-shadow: 0 0 15px #f1c40f; }
 .fighter.selected-target-enemy { border-color: #e74c3c; background: #c0392b; box-shadow: 0 0 10px #e74c3c; }
 .fighter.selected-target-ally { border-color: #3498db; background: #2980b9; box-shadow: 0 0 10px #3498db; }
 .fighter.dead-hero { filter: grayscale(100%); opacity: 0.5; cursor: not-allowed; }
 
-.skull-overlay { position: absolute; left: 15px; top: 15px; font-size: 50px; z-index: 10; pointer-events: none; }
-.fighter .avatar { width: 60px; height: 60px; margin: 0 15px 0 0; }
-.stats { flex-grow: 1; text-align: left; }
-.hp-bar-bg { background: #2c3e50; height: 10px; width: 100%; border-radius: 5px; margin-top: 5px; overflow: hidden; }
+.skull-overlay { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 44px; z-index: 10; pointer-events: none; }
+.fighter .avatar { width: 68px; height: 68px; margin: 0 10px 0 0; flex-shrink: 0; position: relative; border: 2px solid rgba(255,255,255,0.18); }
+.stats { flex-grow: 1; text-align: left; min-width: 0; }
+.fighter-name { font-size: 14px; display: block; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fighter-hp-text { font-size: 13px; color: #ecf0f1; font-weight: bold; }
+.hp-bar-bg { background: #1a252f; height: 9px; width: 100%; border-radius: 5px; margin-top: 4px; overflow: hidden; }
 .hp-bar-fill { background: #2ecc71; height: 100%; width: 100%; transition: 0.3s; }
-.passive-info { font-size: 10px; color: #bdc3c7; margin-top: 2px; }
+.passive-info { font-size: 11px; color: #bdc3c7; margin-top: 2px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Помощник (скелет/медведь) — та же карточка, но с пунктирной рамкой,
+   чтобы сразу отличать призванного бойца от настоящего героя. */
+.fighter.companion-fighter { border-style: dashed; border-color: #8e44ad; background: rgba(44, 62, 80, 0.92); }
+.companion-mark { position: absolute; right: -4px; bottom: -4px; font-size: 20px; text-shadow: 0 0 4px #000; }
+
+/* Невидимость видно по самому бойцу, а не только по значку */
+.fighter.is-invisible .avatar { opacity: 0.35; filter: grayscale(100%); }
+.fighter.is-invisible { border-color: #5dade2; border-style: dotted; }
+.fighter.is-stunned .avatar { filter: grayscale(80%) brightness(0.6); }
 
 .skills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; margin-bottom: 15px; }
 /* Высота ЖЁСТКО фиксирована, а не min-height: у разных героев описания умений
@@ -88,26 +131,45 @@ body {
     min-height: 44px;
   }
 }
+/* СТРОГО 3 карточки в ряд на всю доступную ширину. Раньше стояло
+   repeat(auto-fit, 150px): на телефоне помещалось 2 колонки фиксированной
+   ширины, справа оставалась пустая полоса, а карточки казались мелкими и
+   разной высоты. Теперь колонки резиновые (1fr), а карточки тянутся на всю
+   ячейку — ряд всегда ровный и занимает всю ширину экрана. */
 .heroes-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, 150px);
-    justify-content: center;
-    justify-items: center;
-    gap: 15px;
-    margin: 20px 0;
+    grid-template-columns: repeat(3, 1fr);
+    align-items: stretch;
+    gap: 10px;
+    margin: 15px 0;
 }
 
 .hero-card {
-    border: 2px solid #ccc;
-    border-radius: 8px;
-    padding: 10px;
+    width: 100%;
+    border: 2px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 10px 8px;
     cursor: pointer;
-    transition: 0.2s;
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
     height: 100%;
+    background: linear-gradient(160deg, rgba(52,73,94,0.95), rgba(26,37,47,0.95));
+    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+}
+.hero-card:hover { border-color: #f1c40f; transform: translateY(-2px); }
+.hero-card.selected {
+    border-color: #2ecc71;
+    background: linear-gradient(160deg, rgba(39,174,96,0.9), rgba(20,90,50,0.95));
+    box-shadow: 0 0 14px rgba(46,204,113,0.55);
+}
+/* Имя занимает ровно две строки всегда: иначе карточка "Кощей Бессмертный"
+   оказывалась на 15px выше соседних и ряды выглядели разнокалиберными. */
+.hero-card b {
+    font-size: 15px; line-height: 1.2;
+    min-height: 2.4em; display: flex; align-items: center; justify-content: center;
 }
 .hero-card > button,
 .hero-card .promo-hero-tag,
@@ -204,9 +266,11 @@ body {
 /* =========================================================================
    АРЕНЫ
    ========================================================================= */
-.arena-card { width: 220px; text-align: center; padding: 16px; }
-.arena-icon { font-size: 40px; margin-bottom: 8px; }
-.arena-desc { font-size: 12px; color: #bdc3c7; margin-top: 8px; line-height: 1.4; }
+/* Арены — те же 3 в ряд, чтобы все 6 помещались в два ряда и выбирались
+   сразу, без длинной прокрутки. */
+.arena-card { width: 100%; text-align: center; padding: 12px 8px; }
+.arena-icon { font-size: 34px; margin-bottom: 6px; }
+.arena-desc { font-size: 12px; color: #bdc3c7; margin-top: 6px; line-height: 1.35; }
 
 /* =========================================================================
    СЛОЖНОСТЬ БОТА И СТАТИСТИКА
@@ -351,42 +415,79 @@ body {
    МОБИЛЬНАЯ АДАПТИВНОСТЬ
    ========================================================================= */
 @media (max-width: 768px) {
-    .squad-title { font-size: 18px; }
+    body { padding: 8px; }
+    .screen { padding: 8px; }
+    .squad-title { font-size: 19px; margin-bottom: 12px; }
 
-    .heroes-grid { grid-template-columns: repeat(auto-fit, 120px); gap: 10px; }
-    .card { width: auto; padding: 8px; }
-    .avatar { width: 72px; height: 72px; }
+    /* Сетка остаётся 3 в ряд (задана выше) — здесь только ужимаем отступы,
+       чтобы карточки стали ШИРЕ, а не мельче. */
+    .heroes-grid { gap: 8px; margin: 12px 0; }
+    .card { padding: 7px 5px; }
+    .hero-card b { font-size: 13px; }
+    .passive-badge { font-size: 11px; padding: 2px 4px; }
 
     .hero-details-card { flex-direction: column; text-align: center; }
     .details-grid { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
 
+    /* Шрифты в бою НЕ уменьшаем — на них жаловались, что приходится
+       напрягать глаза. Место выигрывается за счёт отступов, а не кегля. */
     .skills { gap: 8px; }
-    .skill-btn { font-size: 13px; padding: 8px; height: 104px; }
+    .skill-btn { font-size: 14px; padding: 8px 6px; height: 100px; }
+    .skill-btn small { font-size: 12px; }
 
-    .fighter { padding: 6px; }
-    .fighter .avatar { width: 40px; height: 40px; margin: 0 6px 0 0; flex-shrink: 0; }
-    .fighter .stats b { font-size: 12px; }
-    .fighter .stats small { font-size: 10px; }
-    .fighter .passive-info { font-size: 8px; }
-    .fighter .hp-bar-bg { height: 6px; }
-    .skull-overlay { font-size: 30px; left: 6px; top: 6px; }
+    .fighter { padding: 6px; height: 76px; }
+    .fighter .avatar { width: 56px; height: 56px; margin: 0 7px 0 0; }
+    .fighter .fighter-name { font-size: 13px; }
+    .fighter .fighter-hp-text { font-size: 12px; }
+    .fighter .passive-info { font-size: 10px; }
+    .fighter .hp-bar-bg { height: 7px; }
+    .skull-overlay { font-size: 34px; left: 10px; }
 
-    .arena-card { width: 100%; max-width: 320px; }
+    .battlefield { gap: 6px; }
+    .team { width: 50%; gap: 6px; }
+    .battle-topbar { font-size: 13px; margin-bottom: 8px; }
+
+    .arena-card { padding: 10px 6px; }
+    .arena-icon { font-size: 28px; }
+    .arena-desc { font-size: 11px; }
 
     .difficulty-picker { flex-direction: column; gap: 8px; }
 
-    #execute-btn { width: 100%; max-width: 320px; }
+    #execute-btn { width: 100%; max-width: none; font-size: 18px; padding: 12px; margin-top: 8px; }
+    #combat-log { height: 96px; font-size: 13px; margin-top: 10px; }
+    .skill-btn { height: 92px; }
+    .turn-indicator { margin: 6px 0 2px; }
 
-    .floating-text { font-size: 16px; }
-    .floating-crit { font-size: 20px; }
+    .floating-text { font-size: 18px; }
+    .floating-crit { font-size: 22px; }
 }
 
+/* Очень узкие экраны: сохраняем 3 в ряд, но подрезаем текст, а не картинки */
 @media (max-width: 380px) {
-    .fighter .avatar { width: 32px; height: 32px; margin-right: 4px; }
-    .fighter { padding: 4px; }
-    .fighter .stats b { font-size: 11px; }
-    .team { width: 49%; }
-    .battlefield { gap: 6px; }
+    .hero-card b { font-size: 12px; }
+    .passive-badge { font-size: 10px; }
+    .fighter .avatar { width: 46px; height: 46px; margin-right: 6px; }
+    .fighter .fighter-name { font-size: 12px; }
+    .battlefield { gap: 5px; }
+    .skill-btn { font-size: 13px; }
+}
+
+/* =========================================================================
+   ЗАКРЕПЛЁННАЯ КНОПКА "НАЗАД"
+   Раньше она была в самом низу длинной страницы: чтобы уйти из магазина,
+   приходилось прокручивать весь список до конца. Теперь всегда под рукой в
+   нижней части экрана, но с отступом от края — чтобы не нажималась случайно
+   вместе с системными жестами.
+   ========================================================================= */
+.sticky-back {
+    position: sticky;
+    bottom: 14px;
+    z-index: 50;
+    display: block;
+    width: 100%;
+    max-width: 340px;
+    margin: 18px auto 6px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.55);
 }
 
 /* Гарантируем минимальный размер тач-таргетов на всех экранах, не только <768px */
@@ -418,7 +519,14 @@ body {
    под контент, но над фоновым цветом страницы. */
 .arena-backdrop {
     position: fixed;
-    inset: 0;
+    left: 0; right: 0; top: 0;
+    /* Высота НЕ inset:0 и не 100vh, а 100lvh — "как если бы адресная строка
+       была скрыта". На телефоне при прокрутке браузер прячет и показывает
+       адресную строку, из-за чего 100vh скачет, а вместе с ним пересчитывался
+       background-size: cover — картинка на глазах приближалась и отдалялась.
+       lvh от этого не зависит и остаётся постоянной. */
+    height: 100vh;
+    height: 100lvh;
     z-index: -1;
     background-size: cover;
     background-position: center;
@@ -438,14 +546,30 @@ body {
 .arena-bg-storm { background-image: url('../assets/arena_storm.jpg'); }
 
 #screen-battle {
-    border-radius: 12px; padding: 15px;
+    border-radius: 12px; padding: 12px;
     /* Затемняющая подложка поверх фона арены, чтобы текст оставался читаемым */
-    background: rgba(26, 37, 47, 0.55);
+    background: rgba(26, 37, 47, 0.62);
 }
-#screen-battle::before {
-    content: attr(data-arena-icon);
-    display: block; text-align: center; font-size: 60px; opacity: 0.15;
-    margin-bottom: -20px;
+/* Водяной знак с иконкой арены убран: он занимал ~60px высоты в самом верху
+   экрана боя и ради него приходилось прокручивать поле до лога. Сама арена
+   и так видна фоном и подписана в строке статуса. */
+
+/* Компактная строка статуса боя */
+.battle-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 10px; font-size: 15px;
+}
+.battle-arena { color: #f1c40f; font-weight: bold; text-align: left; }
+.battle-timer {
+    background: rgba(0,0,0,0.45); border-radius: 20px; padding: 4px 12px;
+    font-weight: bold; color: #fff; white-space: nowrap;
+}
+#timer-display { font-size: 18px; font-weight: bold; color: #e74c3c; }
+
+/* "Ходит: ..." переехало ПОД карточки и стало неброской строкой */
+.turn-indicator {
+    font-size: 14px; color: #ecf0f1; margin: 8px 0 4px;
+    text-shadow: 1px 1px 2px #000;
 }
 
 /* =========================================================================
@@ -580,6 +704,25 @@ input[type="text"]:focus {
 .chest-modal { text-align: center; }
 .chest-icon { font-size: 60px; margin-bottom: 10px; }
 .chest-img { width: 120px; height: 120px; object-fit: contain; margin: 0 auto 10px; display: block; }
+
+/* Витрина сундуков: обычный и эпический рядом */
+.chest-offers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-width: 560px; margin: 0 auto; }
+.chest-offer {
+    background: rgba(44, 62, 80, 0.9); border: 2px solid #7f8c8d; border-radius: 12px;
+    padding: 14px 10px; text-align: center;
+}
+.chest-offer.epic { border-color: #9b59b6; box-shadow: 0 0 16px rgba(155, 89, 182, 0.4); }
+.chest-offer .chest-img { width: 90px; height: 90px; }
+.chest-offer .chest-icon { font-size: 54px; margin-bottom: 6px; }
+.chest-offer .skins-hint { margin-bottom: 10px; font-size: 12px; }
+.chest-offer button { width: 100%; font-size: 15px; padding: 10px 6px; }
+.epic-modal { border-color: #9b59b6; }
+
+.inventory-counter { color: #bdc3c7; font-size: 13px; margin: 0 0 10px; }
+
+@media (max-width: 768px) {
+    .chest-offers { grid-template-columns: 1fr; }
+}
 
 /* =========================================================================
    ИНВЕНТАРЬ (v1.04)

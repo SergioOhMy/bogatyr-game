@@ -11,7 +11,7 @@
 // противника. Подходит и для боя в браузере, и для симуляции в
 // scripts/balance-sim.js.
 
-import { computeAttackDamage, hasBuff, pickRandom } from './engine.js';
+import { computeAttackDamage, findCompanion, pickRandom } from './engine.js';
 
 function pickLowestHpPercent(list) {
     return [...list].sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
@@ -45,15 +45,25 @@ export function chooseBotAction(activeChar, allies, enemies, arena, difficulty =
 
     if (aliveEnemies.length === 0) return null;
 
-    const attackSkills = availableSkills.filter(s => s.type === 'attack');
-    const healSkills = availableSkills.filter(s => s.type === 'heal');
+    // 'drain' (вампиризм Кощея) для бота — такая же атака, как обычная: он
+    // наносит урон и считается через computeAttackDamage. Без этого умение
+    // просто выпадало бы из выбора и никогда не применялось ни ботом, ни в
+    // симуляторе баланса.
+    const attackSkills = availableSkills.filter(s => s.type === 'attack' || s.type === 'drain');
+    // Лечение "только себе" боту нужно отделять от лечения дружины: направить
+    // отдых на печи в раненого союзника нельзя (см. characters.js -> healTarget).
+    const allHealSkills = availableSkills.filter(s => s.type === 'heal');
+    const selfHealSkills = allHealSkills.filter(s => s.healTarget === 'self');
+    const healSkills = allHealSkills.filter(s => s.healTarget !== 'self');
     const specialSkills = availableSkills.filter(s => s.type === 'buff' || s.type === 'dispel' || s.type === 'summon');
     const weakestAlly = aliveAllies.length ? pickLowestHpPercent(aliveAllies) : null;
 
     if (difficulty === 'easy') {
         const skill = pickRandom(availableSkills);
-        if (skill.type === 'heal') return { skill, target: pickLowestHpPercent(aliveAllies) };
-        if (skill.type === 'attack') return { skill, target: pickRandom(aliveEnemies) };
+        if (skill.type === 'heal') {
+            return { skill, target: skill.healTarget === 'self' ? activeChar : pickLowestHpPercent(aliveAllies) };
+        }
+        if (skill.type === 'attack' || skill.type === 'drain') return { skill, target: pickRandom(aliveEnemies) };
         const target = pickDefaultTarget(skill, activeChar, aliveAllies, aliveEnemies);
         return target ? { skill, target } : null;
     }
@@ -64,12 +74,17 @@ export function chooseBotAction(activeChar, allies, enemies, arena, difficulty =
             const target = pickDefaultTarget(skill, activeChar, aliveAllies, aliveEnemies);
             if (target) return { skill, target };
         }
+        if (selfHealSkills.length && (activeChar.hp / activeChar.maxHp) < 0.45 && Math.random() < 0.6) {
+            return { skill: pickRandom(selfHealSkills), target: activeChar };
+        }
         if (healSkills.length && weakestAlly && (weakestAlly.hp / weakestAlly.maxHp) < 0.4 && Math.random() < 0.6) {
             return { skill: pickRandom(healSkills), target: weakestAlly };
         }
         const skill = pickRandom(attackSkills.length ? attackSkills : availableSkills);
-        if (skill.type === 'heal') return { skill, target: weakestAlly || pickLowestHpPercent(aliveEnemies) };
-        if (skill.type === 'attack') {
+        if (skill.type === 'heal') {
+            return { skill, target: skill.healTarget === 'self' ? activeChar : (weakestAlly || activeChar) };
+        }
+        if (skill.type === 'attack' || skill.type === 'drain') {
             // Не всегда бьём самого слабого - иначе бот выглядит как
             // "убивает по очереди". С шансом 45% цель случайная.
             const target = Math.random() < 0.55 ? pickLowestHpPercent(aliveEnemies) : pickRandom(aliveEnemies);
@@ -80,10 +95,19 @@ export function chooseBotAction(activeChar, allies, enemies, arena, difficulty =
     }
 
     // hard
-    // 1. Призвать спутника, если ещё не призван
+    // 1. Призвать помощника, если его нет, или подлечить, если он серьёзно ранен.
+    //
+    // ВАЖНО: раньше здесь стояла проверка hasBuff(activeChar, 'companion') —
+    // от той версии, когда помощник был бафом на хозяине. После переделки
+    // помощника в отдельного бойца этот баф исчез, проверка всегда давала
+    // false, и приоритет №1 срабатывал КАЖДЫЙ ход. А так как лечение помощника
+    // идёт без отката, Кощей и Леший переставали воевать вообще и до конца боя
+    // только латали помощника — их винрейт падал до 37-41%.
     const summonSkill = availableSkills.find(s => s.type === 'summon');
-    if (summonSkill && !hasBuff(activeChar, 'companion')) {
-        return { skill: summonSkill, target: activeChar };
+    if (summonSkill) {
+        const companion = findCompanion(allies, activeChar);
+        if (!companion) return { skill: summonSkill, target: activeChar };
+        if (companion.hp / companion.maxHp < 0.5) return { skill: summonSkill, target: activeChar };
     }
 
     // 2. Развеять опасный щит/бафы у врага, если они есть
@@ -112,7 +136,13 @@ export function chooseBotAction(activeChar, allies, enemies, arena, difficulty =
     }
     if (lethal) return lethal;
 
-    // 5. Лечим союзника ниже 50%, если есть чем
+    // 5а. Лечимся сами, если самолечение есть и мы просели ниже половины
+    if (selfHealSkills.length && (activeChar.hp / activeChar.maxHp) < 0.5) {
+        const bestSelfHeal = [...selfHealSkills].sort((a, b) => Math.abs(b.dmg) - Math.abs(a.dmg))[0];
+        return { skill: bestSelfHeal, target: activeChar };
+    }
+
+    // 5б. Лечим союзника ниже 50%, если есть чем
     if (healSkills.length && weakestAlly && (weakestAlly.hp / weakestAlly.maxHp) < 0.5) {
         const bestHeal = [...healSkills].sort((a, b) => Math.abs(b.dmg) - Math.abs(a.dmg))[0];
         return { skill: bestHeal, target: weakestAlly };
@@ -134,7 +164,7 @@ export function chooseBotAction(activeChar, allies, enemies, arena, difficulty =
     // На крайний случай — что осталось из доступного
     const fallbackSkill = availableSkills[0];
     const target = fallbackSkill.type === 'heal'
-        ? (weakestAlly || pickLowestHpPercent(aliveEnemies))
+        ? (fallbackSkill.healTarget === 'self' ? activeChar : (weakestAlly || activeChar))
         : (pickDefaultTarget(fallbackSkill, activeChar, aliveAllies, aliveEnemies) || pickLowestHpPercent(aliveEnemies));
     return { skill: fallbackSkill, target };
 }

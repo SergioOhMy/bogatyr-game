@@ -15,7 +15,7 @@
          фиксированного размера от высоты содержимого не зависит вообще. -->
     <div id="arena-backdrop" class="arena-backdrop"></div>
 
-    <div class="version-badge">v1.08</div>
+    <div class="version-badge">v1.09</div>
 
     <div class="title-wrap" id="title-wrap">
         <img src="assets/title_logo.png" alt="Битва Богатырей: Легенды Руси" class="game-title-img">
@@ -84,9 +84,10 @@
         <div id="inventory-active-hero" class="inventory-active-hero"></div>
         <div id="inventory-hero-stats" class="inventory-hero-stats"></div>
         <h3>Оружие в инвентаре</h3>
+        <p id="inventory-counter" class="inventory-counter"></p>
         <div id="weapon-grid" class="weapon-grid"></div>
         <div id="weapon-details" class="weapon-details-panel" style="display:none;"></div>
-        <button id="btn-inventory-back" class="danger-btn" style="margin-top: 10px;">Назад в дружину</button>
+        <button id="btn-inventory-back" class="danger-btn sticky-back">← Назад в дружину</button>
     </div>
 
     <!-- 2.2 ОТДЕЛЬНЫЙ ЭКРАН МАГАЗИНА -->
@@ -108,15 +109,38 @@
             <div id="ui-shop-skins" class="heroes-grid"></div>
         </div>
         <div id="shop-chests-panel" style="display:none;">
-            <p class="skins-hint">Сундук с оружием — случайное оружие для вашей дружины. Открывается сразу после покупки.</p>
-            <div style="text-align:center;">
-                <img src="assets/chest_weapon.png" alt="🎁" class="chest-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                <div class="chest-icon" style="display:none;">🎁</div>
-                <button id="btn-buy-chest" class="primary-btn">Купить сундук за 100 💰</button>
+            <p class="skins-hint">Обычный сундук даёт случайное оружие. Эпический — позволяет выбрать любое оружие самому.</p>
+            <div class="chest-offers">
+                <div class="chest-offer">
+                    <img src="assets/chest_weapon.png" alt="🎁" class="chest-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div class="chest-icon" style="display:none;">🎁</div>
+                    <b>Обычный сундук</b>
+                    <p class="skins-hint">Случайное оружие.</p>
+                    <button id="btn-buy-chest" class="primary-btn">Купить за 100 💰</button>
+                </div>
+                <div class="chest-offer epic">
+                    <div class="chest-icon">💎</div>
+                    <b>Эпический сундук</b>
+                    <p class="skins-hint">Выберите любое оружие сами.</p>
+                    <button id="btn-buy-epic-chest" class="primary-btn">Купить за 1000 💰</button>
+                </div>
             </div>
         </div>
         <div id="shop-hero-details" class="hero-details-panel"></div>
-        <button id="btn-shop-back" class="danger-btn" style="margin-top: 20px;">Назад в дружину</button>
+        <button id="btn-shop-back" class="danger-btn sticky-back">← Назад в дружину</button>
+    </div>
+
+    <!-- 2.2.1 ЭПИЧЕСКИЙ СУНДУК: ВЫБОР ЛЮБОГО ОРУЖИЯ -->
+    <div id="epic-chest-backdrop" class="promo-modal-backdrop" style="display: none;">
+        <div class="promo-modal weapon-picker-modal epic-modal">
+            <div class="chest-icon">💎</div>
+            <h3>Эпический сундук</h3>
+            <p class="skins-hint">Выберите любое оружие — оно сразу отправится в инвентарь.</p>
+            <div id="epic-chest-grid" class="weapon-picker-grid"></div>
+            <div class="promo-modal-actions">
+                <button id="btn-epic-chest-cancel" class="danger-btn">Отмена</button>
+            </div>
+        </div>
     </div>
 
     <!-- 2.3 ВЫБОР ОРУЖИЯ В СЛОТ ГЕРОЯ -->
@@ -154,25 +178,27 @@
         <div class="menu-actions" style="margin-top: 20px;">
             <button id="btn-start-battle" class="primary-btn">Начать бой!</button>
             <br>
-            <button id="btn-arena-back" class="danger-btn" style="margin-top: 15px;">Назад в дружину</button>
+            <button id="btn-arena-back" class="danger-btn sticky-back">← Назад в дружину</button>
         </div>
     </div>
 
     <!-- 3. ЭКРАН БОЯ -->
-    <div id="screen-battle" class="screen arena-bg-field" style="display: none;">
-        <h2 id="turn-indicator">Ходит: ...</h2>
-        <p><span id="arena-label"></span> · Время на ход: <span id="timer-display">60</span> сек</p>
-
-        <div class="battlefield-header">
-            <span class="team-label mine">🛡️ Ваша дружина</span>
-            <span class="vs-divider">VS</span>
-            <span class="team-label enemy">⚔️ Противник</span>
+    <div id="screen-battle" class="screen" style="display: none;">
+        <!-- Компактная строка статуса: арена слева, таймер справа. Раньше здесь
+             были крупный заголовок "Ходит: имя", отдельный абзац с ареной,
+             водяной знак-колосок и метки команд — вместе они съедали пол-экрана
+             на телефоне, и до лога боя приходилось долго прокручивать. -->
+        <div class="battle-topbar">
+            <span id="arena-label" class="battle-arena"></span>
+            <span class="battle-timer">⏱ <span id="timer-display">60</span></span>
         </div>
 
         <div class="battlefield">
             <div id="player-team" class="team mine"></div>
             <div id="enemy-team" class="team enemy"></div>
         </div>
+
+        <div id="turn-indicator" class="turn-indicator">Ходит: ...</div>
 
         <div id="skills-container" class="skills"></div>
         <button id="execute-btn" disabled>Атаковать</button>

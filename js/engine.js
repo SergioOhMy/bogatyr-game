@@ -75,6 +75,29 @@ export function buildTurnQueue(playerTeam, enemyTeam) {
     return [...playerTeam, ...enemyTeam].sort((a, b) => b.initiativeScore - a.initiativeScore);
 }
 
+/** Живой помощник указанного хозяина в его команде (или null). */
+export function findCompanion(team, owner) {
+    return team.find(c => c.isCompanion && c.ownerId === owner.id && c.hp > 0) || null;
+}
+
+/** Только настоящие герои — помощники не считаются за бойцов при подсчёте победы. */
+export function livingHeroes(team) {
+    return team.filter(c => c.hp > 0 && !c.isCompanion);
+}
+
+/**
+ * Вставляет нового бойца (помощника) в уже идущую очередь ходов по его
+ * инициативе и возвращает поправленный индекс текущего хода: если вставка
+ * произошла до текущей позиции, индекс надо сдвинуть, иначе очередь
+ * "перескочит" через того, кто ходит прямо сейчас.
+ */
+export function insertIntoQueue(queue, unit, currentIndex) {
+    let pos = queue.findIndex(c => c.initiativeScore < unit.initiativeScore);
+    if (pos === -1) pos = queue.length;
+    queue.splice(pos, 0, unit);
+    return pos <= currentIndex ? currentIndex + 1 : currentIndex;
+}
+
 /** Эффект начала хода от арены (лечение нежити в болоте, урон от лавы и т.п.). */
 export function applyArenaTurnStart(character, arena) {
     if (!arena || !arena.turnStartEffect) return null;

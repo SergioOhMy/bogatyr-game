@@ -2,6 +2,7 @@ import { state, currentProfile } from './state.js';
 import { passivesSystem, initHeroStats } from './characters.js';
 import { getHeroImage } from './skins.js';
 import { getWeaponById } from './items.js';
+import { findCompanion } from './engine.js';
 
 // Сколько строк лога держим в DOM. Длинный бой на "сложной" сложности легко
 // набирает несколько сотен строк, а лог никогда не чистился в пределах боя -
@@ -34,13 +35,17 @@ export function renderBattlefield(onTargetSelect) {
         Array.from(container.querySelectorAll('.fighter')).forEach(child => {
             if (!currentIds.has(child.dataset.charId)) child.remove();
         });
-        Array.from(container.querySelectorAll('.companion-card')).forEach(child => {
-            if (!currentIds.has(child.dataset.companionOwner)) child.remove();
-        });
     });
 
     const renderChar = (char, div) => {
         let isDead = char.hp <= 0;
+        // Павшего помощника убираем с поля совсем: в отличие от героя он не
+        // часть состава, и его "труп" только занимал бы место на мобильном.
+        if (isDead && char.isCompanion) {
+            const stale = div.querySelector(`.fighter[data-char-id="${char.id}"]`);
+            if (stale) stale.remove();
+            return;
+        }
         let hpPercent = Math.max(0, (char.hp / char.maxHp) * 100);
 
         // ВАЖНО: ищем уже существующий элемент и обновляем его на месте,
@@ -56,9 +61,20 @@ export function renderBattlefield(onTargetSelect) {
             el = document.createElement('div');
             el.classList.add('fighter');
             el.dataset.charId = char.id;
-            el.onclick = () => onTargetSelect(char);
             div.appendChild(el);
         }
+        // Обработчик переустанавливаем на КАЖДЫЙ рендер, а не только при
+        // создании карточки.
+        //
+        // Карточки переиспользуются между боями (ищутся по data-char-id, а id
+        // героя от боя к бою не меняется), а startCombat каждый раз создаёт
+        // НОВЫЕ объекты бойцов через initHeroStats. Замыкание, поставленное
+        // один раз, продолжало держать объект из прошлого боя — и проверка
+        // `state.playerTeam.includes(char)` в onTargetSelect давала false для
+        // собственных же героев. Клик по союзнику молча отбрасывался, цель
+        // оставалась на validTargets[0], и любое лечение уходило всегда в
+        // одного и того же бойца (жалоба: "Леший лечит только Кощея").
+        el.onclick = () => onTargetSelect(char);
 
         // Статусные классы переключаем точечно - анимационные классы
         // (fx-*, hit-shake), которые мог поставить playXFx, не трогаем.
@@ -84,10 +100,18 @@ export function renderBattlefield(onTargetSelect) {
             stun:     () => 'Оглушение'
         };
         const buffIcons = { dmgBuff: '⚔️', defBuff: '🛡️', evasive: '💨', blind: '😵', stun: '💫' };
-        const buffsHtml = (char.buffs || []).filter(b => b.stat !== 'companion').map(b => {
+        const buffsHtml = (char.buffs || []).map(b => {
             const label = buffLabels[b.stat] ? buffLabels[b.stat](b) : b.stat;
             return `<span class="buff-badge" title="${label} — осталось ходов: ${b.turnsLeft}">${buffIcons[b.stat] || '✨'}</span>`;
         }).join('');
+
+        // Невидимость/уворот видно по самому бойцу, а не только по значку:
+        // шапка-невидимка Емели и неуловимость Колобка теперь делают портрет
+        // полупрозрачным и обесцвеченным, чтобы состояние читалось с одного
+        // взгляда, как и просили.
+        el.classList.toggle('is-invisible', !isDead && (char.buffs || []).some(b => b.stat === 'evasive'));
+        el.classList.toggle('is-stunned', !isDead && (char.buffs || []).some(b => b.stat === 'stun'));
+        el.classList.toggle('companion-fighter', !!char.isCompanion);
 
         const dotIcons = { poison: '☠️', burn: '🔥' };
         const dotsHtml = (char.statusEffects || []).map(e =>
@@ -104,48 +128,27 @@ export function renderBattlefield(onTargetSelect) {
             content.className = 'fighter-content';
             el.appendChild(content);
         }
+        const subtitle = char.isCompanion
+            ? `${char.icon} помощник · ${char.ownerName}`
+            : `${char.passiveName}${char.equippedWeapon ? ` · ${char.equippedWeapon.icon} ${char.equippedWeapon.name}` : ''}`;
+
         content.innerHTML = `
             ${skullHtml}
-            <div class="avatar" style="background-image: url('${getHeroImage(char, currentProfile)}');"></div>
+            <div class="avatar" style="background-image: url('${getHeroImage(char, currentProfile)}');">${char.isCompanion ? `<span class="companion-mark">${char.icon}</span>` : ''}</div>
             <div class="stats">
-                <b>${char.name}</b> <small>(${char.hp}/${char.maxHp})</small>
-                <div class="passive-info">${char.passiveName}${char.equippedWeapon ? ` · ${char.equippedWeapon.icon} ${char.equippedWeapon.name}` : ''}</div>
+                <b class="fighter-name">${char.name}</b>
+                <div class="fighter-hp-text">${char.hp}/${char.maxHp}</div>
+                <div class="passive-info">${subtitle}</div>
                 <div class="buffs-row">${buffsHtml}${dotsHtml}</div>
                 <div class="hp-bar-bg"><div class="hp-bar-fill" style="width: ${hpPercent}%; background: ${hpPercent < 30 ? '#e74c3c' : '#2ecc71'}"></div></div>
             </div>`;
     };
 
-    // Призванный спутник (Кощей/Леший) - см. combat.js -> startTurn, буфф
-    // 'companion'. Раньше был виден только маленьким значком в buffs-row -
-    // теперь дополнительно рисуем отдельную компактную карточку сразу под
-    // хозяином, чтобы его реально было видно на поле боя, как просили.
-    const renderCompanion = (char, div) => {
-        const companionBuff = char.buffs && char.buffs.find(b => b.stat === 'companion');
-        let compEl = div.querySelector(`.companion-card[data-companion-owner="${char.id}"]`);
-
-        if (!companionBuff) {
-            if (compEl) compEl.remove();
-            return;
-        }
-
-        if (!compEl) {
-            compEl = document.createElement('div');
-            compEl.className = 'companion-card';
-            compEl.dataset.companionOwner = char.id;
-        }
-        const meta = companionBuff.meta || { icon: '👥', label: 'Спутник' };
-        compEl.innerHTML = `<span class="companion-icon">${meta.icon}</span><span class="companion-label">${meta.label} <small>(с ${char.name})</small></span>`;
-
-        const ownerEl = div.querySelector(`.fighter[data-char-id="${char.id}"]`);
-        if (ownerEl && ownerEl.nextElementSibling !== compEl) {
-            ownerEl.insertAdjacentElement('afterend', compEl);
-        } else if (!compEl.parentNode) {
-            div.appendChild(compEl);
-        }
-    };
-
-    state.playerTeam.forEach(c => { renderChar(c, pDiv); renderCompanion(c, pDiv); });
-    state.enemyTeam.forEach(c => { renderChar(c, eDiv); renderCompanion(c, eDiv); });
+    // Помощники больше не рисуются отдельной мини-карточкой: теперь это
+    // обычные бойцы в тех же командах, поэтому renderChar справляется с ними
+    // сам (см. characters.js -> createCompanion).
+    state.playerTeam.forEach(c => renderChar(c, pDiv));
+    state.enemyTeam.forEach(c => renderChar(c, eDiv));
 }
 
 export function renderSkills(char, onSkillSelect) {
@@ -170,16 +173,26 @@ export function renderSkills(char, onSkillSelect) {
 
         let displayName = skill.name;
         let displayLine;
+        let uselessHeal = false;
         if (skill.type === 'summon') {
-            const companionActive = char.buffs && char.buffs.some(b => b.stat === 'companion');
-            if (companionActive) {
-                displayName = `Лечить: ${skill.companion.label}`;
-                displayLine = `<small>Восстановить себе ~${skill.companion.procHeal} ХП</small>`;
+            const team = state.playerTeam.includes(char) ? state.playerTeam : state.enemyTeam;
+            const companion = findCompanion(team, char);
+            if (companion) {
+                displayName = `Лечить: ${companion.name}`;
+                // Лечить целого помощника бессмысленно — это просто потерянный
+                // ход (лечение идёт без отката, поэтому соблазн нажать велик).
+                uselessHeal = companion.hp >= companion.maxHp;
+                displayLine = uselessHeal
+                    ? `<small>Помощник цел (${companion.hp}/${companion.maxHp})</small>`
+                    : `<small>+${skill.companion.heal} ХП помощнику (${companion.hp}/${companion.maxHp}) · без отката</small>`;
             } else {
                 displayLine = `<small>${skill.desc}</small>`;
             }
         } else if (isSpecial) {
             displayLine = `<small>${skill.desc}</small>`;
+        } else if (skill.type === 'drain') {
+            const val = Math.round(skill.dmg * char.dmgMult);
+            displayLine = `<small>Урон ~${val}, столько же ХП себе</small>`;
         } else {
             let displayVal = Math.round(Math.abs(skill.dmg) * (skill.type === 'heal' ? char.healMult : char.dmgMult));
             displayLine = `<small>(${skill.dmg > 0 ? 'Урон' : 'Хил'}: ~${displayVal})</small>`;
@@ -188,6 +201,8 @@ export function renderSkills(char, onSkillSelect) {
         let innerHtml = `<div><span>${skill.icon}</span> <b>${displayName}</b>${skill.isUltimate ? ' <span class="ult-tag">ULT</span>' : ''}${skill.aoe ? ' <span class="ult-tag">ВСЕ</span>' : ''}</div> ${displayLine}`;
 
         if (char.isBot) {
+            btn.disabled = true;
+        } else if (uselessHeal) {
             btn.disabled = true;
         } else if (isLocked) {
             innerHtml += `<br><small style="color: #95a5a6;">Откроется через ${turnsUntilUnlock} ход(а)</small>`;
@@ -493,16 +508,6 @@ export function playUltimateFx(attacker, target) {
 export function playBuffFx(target, { positive = true } = {}) {
     const el = findFighterEl(target);
     playCssFx(el, positive ? 'fx-buff-positive' : 'fx-buff-negative', 550);
-}
-
-/** Короткая вспышка на мини-карточке спутника, когда он бьёт врага (см. combat.js -> startTurn). */
-export function pulseCompanion(ownerCharId) {
-    const compEl = document.querySelector(`.companion-card[data-companion-owner="${ownerCharId}"]`);
-    if (!compEl) return;
-    compEl.classList.remove('pulse');
-    void compEl.offsetWidth;
-    compEl.classList.add('pulse');
-    setTimeout(() => compEl.classList.remove('pulse'), 500);
 }
 
 function hexToRgba(hex, alpha) {

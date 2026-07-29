@@ -8,14 +8,15 @@
 //
 // Запуск: node scripts/balance-sim.js  (или npm run balance)
 
-import { baseCharacters, initHeroStats } from '../js/characters.js';
+import { baseCharacters, initHeroStats, createCompanion } from '../js/characters.js';
 import { arenas } from '../js/arenas.js';
 import { chooseBotAction } from '../js/bot.js';
 import { getRandomWeapon } from '../js/items.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
-    applyStatusEffects, applySkillDot,
-    tickBuffs, hasBuff, addBuff, dispelBuffs, shuffle, pickRandom
+    applyStatusEffects, applySkillDot, computeAttackDamage,
+    tickBuffs, hasBuff, addBuff, dispelBuffs, shuffle, pickRandom,
+    findCompanion, livingHeroes, insertIntoQueue
 } from '../js/engine.js';
 import { writeFileSync } from 'fs';
 
@@ -63,31 +64,58 @@ function runBuffOrDispel(active, skill, target, allies, enemies) {
     }
 }
 
-function runSummon(active, skill) {
-    if (hasBuff(active, 'companion')) {
-        active.hp = Math.min(active.maxHp, active.hp + skill.companion.procHeal);
+/** Призыв/лечение помощника — зеркалит combat.js -> executeSummonAction. */
+function runSummon(active, skill, team, queue, state) {
+    const existing = findCompanion(team, active);
+    if (existing) {
+        existing.hp = Math.min(existing.maxHp, existing.hp + skill.companion.heal);
+        active.currentCooldowns[skill.name] = 0; // лечение помощника без отката
     } else {
-        addBuff(active, { stat: 'companion', value: skill.companion.procDmg, turns: 99, dispellable: true, meta: skill.companion });
+        const companion = createCompanion(active, skill.companion);
+        team.push(companion);
+        state.idx = insertIntoQueue(queue, companion, state.idx);
     }
+}
+
+/** Вампиризм — зеркалит combat.js -> executeDrainAction. */
+function runDrain(active, skill, target, arena) {
+    const raw = computeAttackDamage(skill, active, target, arena);
+    const drained = Math.min(target.hp, raw);
+    target.hp = Math.max(0, target.hp - drained);
+    active.hp = Math.min(active.maxHp, active.hp + drained);
+}
+
+/** Помощник гибнет вместе с хозяином — зеркалит combat.js -> cleanupCompanions. */
+function cleanupCompanions(teams) {
+    teams.forEach(team => {
+        team.forEach(unit => {
+            if (!unit.isCompanion || unit.hp <= 0) return;
+            const owner = team.find(c => c.id === unit.ownerId);
+            if (!owner || owner.hp <= 0) unit.hp = 0;
+        });
+    });
 }
 
 function runOneBattle(teamAIds, teamBIds, arena) {
     const teamA = teamAIds.map(id => initHeroStats(baseCharacters.find(c => c.id === id), true, Math.random() < 0.8 ? getRandomWeapon().id : null));
     const teamB = teamBIds.map(id => initHeroStats(baseCharacters.find(c => c.id === id), true, Math.random() < 0.8 ? getRandomWeapon().id : null));
 
-    let queue = buildTurnQueue(teamA, teamB);
+    const queue = buildTurnQueue(teamA, teamB);
     let turns = 0;
-    let idx = 0;
+    // idx держим в объекте: insertIntoQueue при призыве помощника может его
+    // сдвинуть, если новый боец встал в очередь перед текущим.
+    const cursor = { idx: 0 };
 
     while (turns < MAX_TURNS) {
-        const aliveA = teamA.filter(c => c.hp > 0).length;
-        const aliveB = teamB.filter(c => c.hp > 0).length;
-        if (aliveA === 0) return { winner: 'B' };
-        if (aliveB === 0) return { winner: 'A' };
+        cleanupCompanions([teamA, teamB]);
+        // Победа считается только по настоящим героям: оставшийся в живых
+        // скелет — не повод продолжать бой.
+        if (livingHeroes(teamA).length === 0) return { winner: 'B' };
+        if (livingHeroes(teamB).length === 0) return { winner: 'A' };
 
-        if (idx >= queue.length) idx = 0;
-        const active = queue[idx];
-        idx++;
+        if (cursor.idx >= queue.length) cursor.idx = 0;
+        const active = queue[cursor.idx];
+        cursor.idx++;
         turns++;
 
         if (active.hp <= 0) continue;
@@ -115,17 +143,6 @@ function runOneBattle(teamAIds, teamBIds, arena) {
         applyStatusEffects(active);
         if (active.hp <= 0) continue;
 
-        // Прок спутника (Кощей/Леший)
-        const companionBuff = active.buffs && active.buffs.find(b => b.stat === 'companion');
-        if (companionBuff) {
-            const aliveFoes = enemies.filter(c => c.hp > 0);
-            if (aliveFoes.length) {
-                const weakest = [...aliveFoes].sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
-                weakest.hp = Math.max(0, weakest.hp - companionBuff.value);
-                if (weakest.hp <= 0) continue;
-            }
-        }
-
         const action = chooseBotAction(active, allies, enemies, arena, DIFFICULTY);
         if (!action) continue;
         const { skill, target } = action;
@@ -135,7 +152,11 @@ function runOneBattle(teamAIds, teamBIds, arena) {
             continue;
         }
         if (skill.type === 'summon') {
-            runSummon(active, skill);
+            runSummon(active, skill, allies, queue, cursor);
+            continue;
+        }
+        if (skill.type === 'drain') {
+            if (target && target.hp > 0) runDrain(active, skill, target, arena);
             continue;
         }
         if (skill.aoe) {
@@ -144,6 +165,12 @@ function runOneBattle(teamAIds, teamBIds, arena) {
         }
 
         if (!target || target.hp <= 0) continue;
+        // Самолечение всегда уходит в самого применяющего (healTarget: 'self')
+        if (skill.type === 'heal' && skill.healTarget === 'self') {
+            const heal = resolveAction({ attacker: active, target: active, skill, arena });
+            active.hp = Math.min(active.maxHp, active.hp + heal.amount);
+            continue;
+        }
         const result = resolveAction({ attacker: active, target, skill, arena });
         applySingleResult(result);
 

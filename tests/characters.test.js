@@ -7,7 +7,7 @@
 // Волколака не срабатывали ни разу за всю историю игры.
 
 import { describe, it, expect } from 'vitest';
-import { baseCharacters, passivesSystem, initHeroStats } from '../js/characters.js';
+import { baseCharacters, passivesSystem, initHeroStats, createCompanion } from '../js/characters.js';
 import { specialCharacters } from '../js/promocodes.js';
 import { skinsCatalog } from '../js/skins.js';
 import { weaponCatalog } from '../js/items.js';
@@ -43,7 +43,7 @@ describe('характеристики героев', () => {
         allCharacters.forEach(char => {
             char.skills.forEach(skill => {
                 const where = `${char.name} / ${skill.name}`;
-                expect(['attack', 'heal', 'buff', 'dispel', 'summon'], where).toContain(skill.type);
+                expect(['attack', 'heal', 'buff', 'dispel', 'summon', 'drain'], where).toContain(skill.type);
                 expect(skill.cooldown, where).toBeGreaterThanOrEqual(0);
                 expect(skill.icon, where).toBeTruthy();
 
@@ -56,10 +56,16 @@ describe('характеристики героев', () => {
                     expect(skill.desc, where).toBeTruthy();
                 }
                 if (skill.type === 'dispel') expect(['ally', 'enemy'], where).toContain(skill.dispelTarget);
+                if (skill.type === 'drain') expect(skill.dmg, where).toBeGreaterThan(0);
                 if (skill.type === 'summon') {
+                    // Помощник теперь полноценный боец: нужны его ХП, урон,
+                    // скорость (для места в очереди) и объём лечения.
                     expect(skill.companion, where).toBeDefined();
-                    expect(skill.companion.procDmg, where).toBeGreaterThan(0);
-                    expect(skill.companion.procHeal, where).toBeGreaterThan(0);
+                    expect(skill.companion.hp, where).toBeGreaterThan(0);
+                    expect(skill.companion.dmg, where).toBeGreaterThan(0);
+                    expect(skill.companion.heal, where).toBeGreaterThan(0);
+                    expect(skill.companion.speed, where).toBeGreaterThan(0);
+                    expect(skill.companion.label, where).toBeTruthy();
                 }
             });
         });
@@ -118,7 +124,76 @@ describe('характеристики героев', () => {
     });
 });
 
+describe('помощники (скелет/медведь)', () => {
+    const summonSkills = allCharacters.flatMap(c =>
+        c.skills.filter(s => s.type === 'summon').map(s => ({ owner: c, skill: s })));
+
+    it('в игре есть хотя бы один призыв', () => {
+        expect(summonSkills.length).toBeGreaterThan(0);
+    });
+
+    it('createCompanion даёт готового к бою юнита со своими ХП', () => {
+        summonSkills.forEach(({ owner, skill }) => {
+            const hero = initHeroStats(owner, false);
+            const comp = createCompanion(hero, skill.companion);
+            const where = `${owner.name} / ${comp.name}`;
+            expect(comp.isCompanion, where).toBe(true);
+            expect(comp.ownerId, where).toBe(hero.id);
+            expect(comp.hp, where).toBe(comp.maxHp);
+            expect(comp.maxHp, where).toBeGreaterThan(0);
+            expect(comp.isBot, where).toBe(true); // ходит сам даже в дружине игрока
+            expect(comp.skills.length, where).toBe(1);
+            expect(comp.skills[0].type, where).toBe('attack');
+            expect(comp.currentCooldowns[comp.skills[0].name], where).toBe(0);
+            expect(comp.initiativeScore, where).toBeGreaterThan(0);
+            expect(comp.buffs, where).toEqual([]);
+            expect(comp.statusEffects, where).toEqual([]);
+        });
+    });
+
+    it('id помощника не конфликтует с id героев', () => {
+        const heroIds = new Set(allCharacters.map(c => c.id));
+        summonSkills.forEach(({ owner, skill }) => {
+            const comp = createCompanion(owner, skill.companion);
+            expect(heroIds.has(comp.id)).toBe(false);
+        });
+    });
+
+    it('два разных хозяина получают разных помощников', () => {
+        if (summonSkills.length < 2) return;
+        const a = createCompanion(summonSkills[0].owner, summonSkills[0].skill.companion);
+        const b = createCompanion(summonSkills[1].owner, summonSkills[1].skill.companion);
+        expect(a.id).not.toBe(b.id);
+    });
+});
+
+describe('адресация лечения', () => {
+    it('healTarget указан корректно там, где он есть', () => {
+        allCharacters.forEach(char => {
+            char.skills.filter(s => s.type === 'heal').forEach(skill => {
+                if (skill.healTarget !== undefined) {
+                    expect(['self', 'ally'], `${char.name} / ${skill.name}`).toContain(skill.healTarget);
+                }
+            });
+        });
+    });
+
+    it('массовое лечение не бывает "только себе" — это противоречивая пара флагов', () => {
+        allCharacters.forEach(char => {
+            char.skills.filter(s => s.type === 'heal' && s.aoe).forEach(skill => {
+                expect(skill.healTarget, `${char.name} / ${skill.name}`).not.toBe('self');
+            });
+        });
+    });
+});
+
 describe('скины и оружие', () => {
+    it('все образы стоят одинаково — 100 монет', () => {
+        Object.values(skinsCatalog).flat().forEach(skin => {
+            expect(skin.price, skin.name).toBe(100);
+        });
+    });
+
     it('скины ссылаются на существующих героев, id скинов уникальны', () => {
         const heroIds = new Set(baseCharacters.map(c => c.id));
         const skinIds = [];
