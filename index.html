@@ -15,7 +15,7 @@
          фиксированного размера от высоты содержимого не зависит вообще. -->
     <div id="arena-backdrop" class="arena-backdrop"></div>
 
-    <div class="version-badge">v1.09</div>
+    <div class="version-badge">v1.11</div>
 
     <div class="title-wrap" id="title-wrap">
         <img src="assets/title_logo.png" alt="Битва Богатырей: Легенды Руси" class="game-title-img">
@@ -39,7 +39,7 @@
 
         <div id="auth-load" style="display: none;">
             <h2>Выберите профиль:</h2>
-            <div id="profiles-list" class="heroes-grid"></div>
+            <div id="profiles-list" class="profiles-grid"></div>
             <div style="margin-top: 20px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
                 <button id="btn-continue" class="primary-btn" disabled>Продолжить игру</button>
                 <button id="btn-delete-profile" class="danger-btn small-btn" disabled>Удалить профиль</button>
@@ -135,9 +135,11 @@
         <div class="promo-modal weapon-picker-modal epic-modal">
             <div class="chest-icon">💎</div>
             <h3>Эпический сундук</h3>
-            <p class="skins-hint">Выберите любое оружие — оно сразу отправится в инвентарь.</p>
+            <p class="skins-hint">Нажмите на оружие, чтобы прочитать, что оно даёт, а потом подтвердите выбор.</p>
             <div id="epic-chest-grid" class="weapon-picker-grid"></div>
+            <div id="epic-chest-details" class="epic-chest-details" style="display:none;"></div>
             <div class="promo-modal-actions">
+                <button id="btn-epic-chest-take" class="primary-btn" disabled>Выбрать</button>
                 <button id="btn-epic-chest-cancel" class="danger-btn">Отмена</button>
             </div>
         </div>
@@ -188,9 +190,13 @@
              были крупный заголовок "Ходит: имя", отдельный абзац с ареной,
              водяной знак-колосок и метки команд — вместе они съедали пол-экрана
              на телефоне, и до лога боя приходилось долго прокручивать. -->
+        <!-- Кнопка "Сдаться" живёт в этой же строке, а не отдельным блоком:
+             экран боя специально помещается целиком без прокрутки, и любой
+             новый блок внизу снова заставил бы прокручивать до лога. -->
         <div class="battle-topbar">
             <span id="arena-label" class="battle-arena"></span>
             <span class="battle-timer">⏱ <span id="timer-display">60</span></span>
+            <button id="btn-surrender" class="surrender-btn" title="Признать поражение и выйти в меню">🏳️ Сдаться</button>
         </div>
 
         <div class="battlefield">

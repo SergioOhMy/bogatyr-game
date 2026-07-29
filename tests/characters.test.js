@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { baseCharacters, passivesSystem, initHeroStats, createCompanion } from '../js/characters.js';
 import { specialCharacters } from '../js/promocodes.js';
-import { skinsCatalog } from '../js/skins.js';
+import { skinsCatalog, SKIN_PRICE } from '../js/skins.js';
 import { weaponCatalog } from '../js/items.js';
 
 const allCharacters = [...baseCharacters, ...specialCharacters];
@@ -115,6 +115,38 @@ describe('характеристики героев', () => {
         hero.skills.forEach(s => expect(hero.currentCooldowns[s.name]).toBe(0));
     });
 
+    // Регрессия: максимум здоровья считался от текущего hp, а не от базового.
+    // Повторная инициализация раздувала HP (188 -> 235), а инициализация уже
+    // погибшего бойца давала maxHp = 0 — после чего полоса здоровья считалась
+    // как 0/0 и в лог боя сыпалось "наносит NaN урона".
+    it('initHeroStats идемпотентна: повторный вызов не меняет характеристики', () => {
+        allCharacters.forEach(char => {
+            const once = initHeroStats(char, false);
+            const twice = initHeroStats(once, false);
+            expect(twice.maxHp, `${char.name}: повторная инициализация раздувает HP`).toBe(once.maxHp);
+            expect(twice.hp, char.name).toBe(once.hp);
+            expect(twice.dmgMult, char.name).toBeCloseTo(once.dmgMult);
+            expect(twice.initiativeScore, char.name).toBe(once.initiativeScore);
+        });
+    });
+
+    it('погибший боец переинициализируется с полным здоровьем, а не с нулевым', () => {
+        allCharacters.forEach(char => {
+            const fighter = initHeroStats(char, false);
+            const fullHp = fighter.maxHp;
+            fighter.hp = 0; // боец пал в предыдущем бою
+            const revived = initHeroStats(fighter, false);
+            expect(revived.maxHp, `${char.name}: maxHp обнулился`).toBe(fullHp);
+            expect(revived.hp, char.name).toBe(fullHp);
+            expect(Number.isFinite(revived.maxHp), char.name).toBe(true);
+        });
+    });
+
+    it('боец с испорченным здоровьем отвергается явной ошибкой, а не молча даёт NaN', () => {
+        const broken = { ...baseCharacters[0], hp: NaN, baseHp: NaN };
+        expect(() => initHeroStats(broken, false)).toThrow(/базовое здоровье/);
+    });
+
     it('initHeroStats делает глубокую копию — правки бойца не портят каталог', () => {
         const before = baseCharacters[0].skills[0].dmg;
         const hero = initHeroStats(baseCharacters[0], false);
@@ -188,9 +220,10 @@ describe('адресация лечения', () => {
 });
 
 describe('скины и оружие', () => {
-    it('все образы стоят одинаково — 100 монет', () => {
+    it('все образы стоят одинаково — SKIN_PRICE', () => {
+        expect(SKIN_PRICE).toBeGreaterThan(0);
         Object.values(skinsCatalog).flat().forEach(skin => {
-            expect(skin.price, skin.name).toBe(100);
+            expect(skin.price, skin.name).toBe(SKIN_PRICE);
         });
     });
 

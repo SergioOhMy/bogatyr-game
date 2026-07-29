@@ -9,7 +9,12 @@ export const state = {
     timeLeft: 60,
     currentArena: null,   // выбранная арена на текущий бой (см. js/arenas.js)
     difficulty: 'normal', // сложность бота на текущий бой: easy | normal | hard
-    playerSkipStreak: 0   // сколько ходов подряд игрок пропустил по таймеру (см. combat.js)
+    playerSkipStreak: 0,  // сколько ходов подряд игрок пропустил по таймеру (см. combat.js)
+    // Бой уже завершён (победа, поражение или сдача). Нужен, потому что ход
+    // бота запускается отложенно (setTimeout ~1.5 сек): без этого флага
+    // сдавшийся игрок успевал уйти в меню, а запланированный ход бота всё
+    // равно срабатывал и продолжал доигрывать несуществующий бой.
+    battleOver: false
 };
 
 export let currentProfile = null;
@@ -78,7 +83,7 @@ export function createProfile(name, selectedHeroes, avatarImg) {
     saveAllProfiles();
 }
 
-export function saveAllProfiles() {
+function saveAllProfiles() {
     localStorage.setItem('bogatyr_profiles_v2', JSON.stringify(allProfiles));
 }
 
@@ -214,7 +219,7 @@ export function sellWeapon(weaponId, price) {
 }
 
 /** Личное оружие Волколака выдаётся автоматически и сразу надето, когда герой впервые появляется у профиля. */
-export function grantPersonalWeaponIfNeeded(heroId, weaponId) {
+function grantPersonalWeaponIfNeeded(heroId, weaponId) {
     if (!currentProfile.inventory.includes(weaponId)) {
         currentProfile.inventory.push(weaponId);
     }

@@ -8,8 +8,8 @@ import { baseCharacters, passivesSystem } from './characters.js';
 import { arenas } from './arenas.js';
 import { specialCharacters, getSpecialCharacterById, resolvePromoCode } from './promocodes.js';
 import { getSkinsForHero, getHeroImage } from './skins.js';
-import { weaponCatalog, getWeaponById, getRandomWeapon, getDroppableWeapons } from './items.js';
-import { startCombat, executeAction, setArenaBackdrop } from './combat.js';
+import { getWeaponById, getRandomWeapon, getDroppableWeapons } from './items.js';
+import { startCombat, executeAction, setArenaBackdrop, surrenderBattle } from './combat.js';
 import { renderHeroDetails, renderInventoryHeroStats } from './ui.js';
 
 let screenAuth, screenMenu, screenBattle, screenArena, screenShop, screenInventory;
@@ -93,6 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
         screenArena.style.display = 'none';
         showMenu();
     };
+
+    // Сдаться — подтверждение спрашивает сама surrenderBattle
+    document.getElementById('btn-surrender').onclick = () => surrenderBattle();
 
     // Магазин - теперь отдельный экран с тремя вкладками
     document.getElementById('btn-goto-shop').onclick = () => showShop();
@@ -703,8 +706,8 @@ function renderWeaponDetails(roster) {
 }
 
 // --------------------------- Сундуки ---------------------------
-export const CHEST_PRICE = 100;
-export const EPIC_CHEST_PRICE = 1000;
+const CHEST_PRICE = 100;
+const EPIC_CHEST_PRICE = 1000;
 /** Шанс, что сундук за победу окажется эпическим (с выбором оружия вручную). */
 const EPIC_CHEST_CHANCE = 0.05;
 
@@ -742,9 +745,39 @@ function openPostBattleChest() {
 function openEpicChest(onDone, costCoins = 0) {
     const backdrop = document.getElementById('epic-chest-backdrop');
     const grid = document.getElementById('epic-chest-grid');
+    const details = document.getElementById('epic-chest-details');
+    const takeBtn = document.getElementById('btn-epic-chest-take');
     grid.innerHTML = '';
+    details.style.display = 'none';
+    takeBtn.disabled = true;
 
+    let picked = null;
     const close = () => { backdrop.style.display = 'none'; if (onDone) onDone(); };
+
+    // Клик по оружию не выдаёт его сразу, а показывает описание: что даёт
+    // базовый эффект, кому оружие "родное" и сколько за него дадут при
+    // продаже. Выдача — только после кнопки "Выбрать" и подтверждения, чтобы
+    // случайный тычок не тратил редкий сундук.
+    const showDetails = (weapon) => {
+        const effectLabel = { dmg: 'урон', def: 'получаемый урон', heal: 'лечение' };
+        const sign = v => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
+        const owner = weapon.bonusFor
+            ? [...baseCharacters, ...specialCharacters].find(c => c.id === weapon.bonusFor)
+            : null;
+        const nativeLine = owner
+            ? `<div class="epic-native">✨ Родное для героя <b>${owner.name}</b>: дополнительно ${sign(weapon.bonusEffect.value)} ${effectLabel[weapon.bonusEffect.stat]}</div>`
+            : `<div class="epic-native epic-native-none">Универсальное — работает одинаково на любом герое.</div>`;
+
+        details.style.display = 'block';
+        details.innerHTML = `
+            <div class="epic-details-head"><span class="epic-details-icon">${weapon.icon}</span> <b>${weapon.name}</b></div>
+            <div class="epic-details-effect">Базовый эффект: <b>${sign(weapon.baseEffect.value)} ${effectLabel[weapon.baseEffect.stat]}</b></div>
+            ${nativeLine}
+            <div class="epic-details-sell">Цена продажи: ${weapon.sellPrice} 💰</div>
+        `;
+        takeBtn.disabled = false;
+        takeBtn.textContent = `Выбрать: ${weapon.name}`;
+    };
 
     if (isInventoryFull()) {
         grid.innerHTML = `<p class="skins-hint">Инвентарь полон (${INVENTORY_CAPACITY} ячеек). Продайте что-нибудь и загляните снова.</p>`;
@@ -757,15 +790,23 @@ function openEpicChest(onDone, costCoins = 0) {
                 <b>${weapon.name}</b>
             `;
             card.onclick = () => {
-                if (costCoins > 0) currentProfile.coins -= costCoins;
-                addWeaponToInventory(weapon.id); // внутри вызывает saveProfile()
-                alert(`Получено: ${weapon.icon} ${weapon.name}`);
-                close();
+                picked = weapon;
+                Array.from(grid.children).forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                showDetails(weapon);
             };
             grid.appendChild(card);
         });
     }
 
+    takeBtn.onclick = () => {
+        if (!picked) return;
+        if (!confirm(`Взять «${picked.name}»? Выбор эпического сундука делается один раз и изменить его будет нельзя.`)) return;
+        if (costCoins > 0) currentProfile.coins -= costCoins;
+        addWeaponToInventory(picked.id); // внутри вызывает saveProfile()
+        alert(`Получено: ${picked.icon} ${picked.name}`);
+        close();
+    };
     document.getElementById('btn-epic-chest-cancel').onclick = close;
     backdrop.style.display = 'flex';
 }

@@ -59,7 +59,7 @@ export function computeHealAmount(skill, attacker, arena = null) {
     return Math.max(1, Math.round(heal));
 }
 
-export function computeMissChance(arena) {
+function computeMissChance(arena) {
     return arena ? arena.missChance : 0;
 }
 
@@ -195,11 +195,6 @@ export function getBuffValue(character, stat) {
 
 export function hasBuff(character, stat) {
     return !!(character.buffs && character.buffs.some(b => b.stat === stat));
-}
-
-export function removeBuffsByStat(character, stat) {
-    if (!character.buffs) return;
-    character.buffs = character.buffs.filter(b => b.stat !== stat);
 }
 
 /** Снимает все РАЗВЕИВАЕМЫЕ бафы/дебафы с цели (дебаф-скиллы "снять чары" и т.п.). Возвращает сколько сняли. */

@@ -32,6 +32,7 @@ export function startCombat(arenaId, difficulty) {
     state.currentArena = getArenaById(arenaId);
     state.difficulty = difficulty || 'normal';
     state.playerSkipStreak = 0;
+    state.battleOver = false;
 
     const remaining = baseCharacters.filter(c => !state.playerTeam.some(p => p.id === c.id));
     const shuffledBots = shuffle(remaining).slice(0, 3);
@@ -76,7 +77,7 @@ export function startCombat(arenaId, difficulty) {
  * цели: отдых на печи Емели, тесто по сусекам Колобка, волчья регенерация
  * Волколака — по смыслу их нельзя направить на союзника.
  */
-export function isSelfHeal(skill) {
+function isSelfHeal(skill) {
     return skill.type === 'heal' && skill.healTarget === 'self';
 }
 
@@ -144,6 +145,7 @@ export function onSkillSelect(skill) {
 }
 
 export function startTurn() {
+    if (state.battleOver) return; // бой уже закончен - новых ходов не начинаем
     clearInterval(state.timerInterval);
     state.selectedSkill = null;
     state.selectedTarget = null;
@@ -209,7 +211,12 @@ export function startTurn() {
     // (и делаем это ПОСЛЕ checkActionState, иначе он перезатрёт текст).
     if (activeChar.isBot) {
         actionBtn.disabled = true;
-        actionBtn.innerText = `Ход противника: ${activeChar.name}...`;
+        // Помощник игрока тоже ходит сам (isBot: true), но называть его ход
+        // "ходом противника" неправильно — скелет-то свой.
+        const isOwnCompanion = activeChar.isCompanion && state.playerTeam.includes(activeChar);
+        actionBtn.innerText = isOwnCompanion
+            ? `Ходит ваш помощник: ${activeChar.name}...`
+            : `Ход противника: ${activeChar.name}...`;
         actionBtn.style.background = '#7f8c8d';
     }
 
@@ -246,6 +253,7 @@ function handleTurnTimeout(activeChar) {
     state.playerSkipStreak++;
     if (state.playerSkipStreak >= 2) {
         log(`⏳💀 <b>${activeChar.name}</b> второй раз подряд не успевает сходить — дружина теряет боевой дух и сдаётся!`);
+        state.battleOver = true;
         setTimeout(() => {
             recordLoss();
             alert('Поражение! Два пропущенных хода подряд — бой проигран автоматически.');
@@ -548,6 +556,8 @@ function applyTemporaryBoosts(attacker) {
 }
 
 function botLogic() {
+    // Ход бота запланирован через setTimeout: за это время игрок мог сдаться.
+    if (state.battleOver) return;
     let activeChar = state.turnQueue[state.currentTurnIndex];
     if (activeChar.hp <= 0) return;
 
@@ -597,7 +607,30 @@ function cleanupCompanions() {
     });
 }
 
+/**
+ * Сдача боя. Засчитывается как обычное поражение: статистика поражений
+ * растёт, сундук не выдаётся (он только за победу).
+ *
+ * Доступна в любой момент боя, в том числе пока думает бот — поэтому первым
+ * делом гасим таймер хода и поднимаем battleOver, иначе уже запланированный
+ * ход противника доиграл бы бой, из которого игрок только что вышел.
+ */
+export function surrenderBattle() {
+    if (state.battleOver) return;
+    if (!confirm('Сдаться? Бой засчитается как поражение, награды и сундука не будет.')) return;
+
+    state.battleOver = true;
+    clearInterval(state.timerInterval);
+    log('🏳️ <b>Вы сдались.</b> Дружина отступает с поля боя.');
+
+    recordLoss();
+    finishBattle();
+    alert('Вы сдались. Бой засчитан как поражение.');
+    showMenu();
+}
+
 function checkWinCondition() {
+    if (state.battleOver) return;
     cleanupCompanions();
     // Считаем только настоящих героев: бой не выигран тем, что у противника
     // остался один призванный скелет, и не проигран потерей помощника.
@@ -605,6 +638,7 @@ function checkWinCondition() {
     let aliveBots = livingHeroes(state.enemyTeam).length;
 
     if (alivePlayers === 0) {
+        state.battleOver = true;
         setTimeout(() => {
             recordLoss();
             finishBattle();
@@ -612,6 +646,7 @@ function checkWinCondition() {
             showMenu(); // сундук выдаётся только за победу
         }, 600);
     } else if (aliveBots === 0) {
+        state.battleOver = true;
         setTimeout(() => {
             winBattle(state.difficulty);
             finishBattle();

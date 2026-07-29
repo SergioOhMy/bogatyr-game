@@ -49,7 +49,7 @@ export const specialCharacters = [
 //                 сперва ввести 'ВОЛКОЛАК2', то временный код смысла не
 //                 имеет и тоже блокируется)
 //   'КЛАД5000'  - разово +5000 монет
-export const promoHashes = {
+const promoHashes = {
     '20a6d9e0da9789af1cfc52f1d3f2065d72166c2bdd5940c2ea071b5d11497786': { type: 'hero_temp', heroId: 'volkolak', heroName: 'Волколак', exclusiveWith: ['900c7caa77ed0a37dc98fffffd1496533d8d3d64e253ab04db9708ccf1b217cb'] },
     '900c7caa77ed0a37dc98fffffd1496533d8d3d64e253ab04db9708ccf1b217cb': { type: 'hero_permanent', heroId: 'volkolak', heroName: 'Волколак' },
     'cc679ba8adc9e5c6836829c80d5dd096905db66402574ac530787d453943c6e6': { type: 'coins', amount: 5000 }

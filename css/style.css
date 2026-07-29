@@ -42,12 +42,10 @@ button:disabled { background: #7f8c8d; border-color: rgba(255,255,255,0.12); box
    лишние пиксели и столбцы получались разной ширины (138 против 133). */
 .team { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; min-width: 0; }
 
-/* Карточки бойцов ОДИНАКОВОЙ высоты и во всю ширину своей половины.
-   Раньше высота зависела от длины имени и числа значков, из-за чего левый и
-   правый столбцы разъезжались и выглядели неаккуратно. */
-/* Высота ЖЁСТКО одинаковая: имена бойцов разной длины ("Илья Муромец" против
-   "Кощей Бессмертный") переносились на вторую строку и карточки получались
-   от 91 до 130px — столбцы выглядели рваными. Текст теперь обрезается. */
+/* Карточки бойцов строго ОДНОГО размера и во всю ширину своей половины.
+   Высота раньше зависела от длины имени и числа значков: "Илья Муромец"
+   против "Кощей Бессмертный" давали от 91 до 130px, и столбцы выглядели
+   рваными. Теперь высота жёсткая, а длинный текст обрезается многоточием. */
 .fighter {
     background: rgba(52, 73, 94, 0.92); padding: 7px; border-radius: 10px;
     border: 2px solid rgba(255,255,255,0.12); cursor: pointer; transition: 0.2s;
@@ -114,22 +112,14 @@ body {
   -webkit-user-select: none;
 }
 
-/* Настройки для экранов телефонов (шириной меньше 768px) */
+/* ВАЖНО: команды остаются бок о бок (слева - свои, справа - враги) на любой
+   ширине экрана. Когда-то здесь стоял flex-direction: column, и обе команды
+   съезжали в один сплошной список - отсюда была жалоба "все лежат друг на
+   друге, непонятно где свои". Ширину столбцов теперь задаёт flex: 1 1 0
+   (см. .team выше), поэтому проценты тут больше не нужны. */
 @media (max-width: 768px) {
-  /* ВАЖНО: команды остаются бок о бок (слева - свои, справа - враги) на
-     любой ширине экрана. Раньше здесь стояла flex-direction: column, из-за
-     чего обе команды съезжали в один сплошной список - это и была причина
-     жалобы "все лежат друг на друге, непонятно где свои". Вместо смены
-     направления просто уменьшаем карточки, чтобы 2 колонки помещались. */
-  .battlefield { gap: 10px; }
-  .team { width: 48%; gap: 8px; }
-
   /* Увеличиваем кнопки, чтобы по ним легко попадать пальцем */
-  button {
-    padding: 12px 20px;
-    font-size: 16px;
-    min-height: 44px;
-  }
+  button { padding: 12px 20px; font-size: 16px; min-height: 44px; }
 }
 /* СТРОГО 3 карточки в ряд на всю доступную ширину. Раньше стояло
    repeat(auto-fit, 150px): на телефоне помещалось 2 колонки фиксированной
@@ -143,6 +133,21 @@ body {
     gap: 10px;
     margin: 15px 0;
 }
+
+/* Выбор профиля — единственный экран, где карточки НЕ раскладываются жёсткой
+   сеткой по 3. Профилей может быть один-два, и в сетке repeat(3, 1fr) они
+   прижимались к левому краю, оставляя справа пустоту. Здесь карточки растут
+   от центра к краям: одна стоит по центру, две — симметрично, дальше ряд
+   расширяется в обе стороны и переносится по мере надобности. */
+.profiles-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: stretch;
+    gap: 10px;
+    margin: 15px 0;
+}
+.profiles-grid .hero-card { width: 132px; flex: 0 0 auto; }
 
 .hero-card {
     width: 100%;
@@ -444,7 +449,7 @@ body {
     .skull-overlay { font-size: 34px; left: 10px; }
 
     .battlefield { gap: 6px; }
-    .team { width: 50%; gap: 6px; }
+    .team { gap: 6px; }
     .battle-topbar { font-size: 13px; margin-bottom: 8px; }
 
     .arena-card { padding: 10px 6px; }
@@ -496,17 +501,6 @@ body {
 /* =========================================================================
    ЧЁТКОЕ РАЗДЕЛЕНИЕ КОМАНД + ФОН АРЕНЫ (v1.02)
    ========================================================================= */
-.battlefield-header {
-    display: flex; justify-content: space-between; align-items: center;
-    max-width: 700px; margin: 10px auto 0; font-weight: bold;
-}
-.team-label { font-size: 15px; padding: 4px 12px; border-radius: 6px; }
-.team-label.mine { background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid #2ecc71; }
-.team-label.enemy { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
-.vs-divider {
-    font-family: 'Yeseva One', serif; color: #f1c40f; font-size: 20px;
-    text-shadow: 1px 1px 2px #000;
-}
 
 .battlefield { position: relative; border-radius: 12px; padding: 15px; }
 .team { border-radius: 8px; padding: 6px; }
@@ -566,6 +560,16 @@ body {
 }
 #timer-display { font-size: 18px; font-weight: bold; color: #e74c3c; }
 
+/* Компактная и намеренно неяркая: это отказ от боя, а не основное действие,
+   и она не должна перетягивать палец с кнопки атаки. */
+.surrender-btn {
+    margin-top: 0; padding: 5px 10px; font-size: 13px; min-height: 0;
+    background: linear-gradient(180deg, #7f8c8d, #5d6d6e);
+    border-bottom-width: 2px; border-radius: 8px; box-shadow: none;
+    white-space: nowrap; opacity: 0.85;
+}
+.surrender-btn:hover:not(:disabled) { opacity: 1; filter: brightness(1.1); }
+
 /* "Ходит: ..." переехало ПОД карточки и стало неброской строкой */
 .turn-indicator {
     font-size: 14px; color: #ecf0f1; margin: 8px 0 4px;
@@ -618,7 +622,6 @@ body {
 .shop-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; max-width: 700px; margin: 0 auto 10px; }
 
 @media (max-width: 768px) {
-    .battlefield-header { flex-direction: column; gap: 6px; }
     #screen-battle::before { font-size: 40px; }
 }
 
@@ -717,6 +720,19 @@ input[type="text"]:focus {
 .chest-offer .skins-hint { margin-bottom: 10px; font-size: 12px; }
 .chest-offer button { width: 100%; font-size: 15px; padding: 10px 6px; }
 .epic-modal { border-color: #9b59b6; }
+.weapon-picker-item.selected { border-color: #f1c40f; box-shadow: 0 0 12px rgba(241, 196, 15, 0.6); }
+
+/* Описание выбранного оружия в эпическом сундуке */
+.epic-chest-details {
+    background: #2c3e50; border: 2px solid #f1c40f; border-radius: 10px;
+    padding: 12px; margin: 0 0 12px; text-align: left; font-size: 13px; line-height: 1.5;
+}
+.epic-details-head { font-size: 16px; margin-bottom: 6px; }
+.epic-details-icon { font-size: 26px; vertical-align: middle; }
+.epic-details-effect { color: #ecf0f1; }
+.epic-native { color: #2ecc71; margin-top: 4px; }
+.epic-native-none { color: #95a5a6; }
+.epic-details-sell { color: #bdc3c7; margin-top: 4px; }
 
 .inventory-counter { color: #bdc3c7; font-size: 13px; margin: 0 0 10px; }
 
@@ -805,7 +821,6 @@ input[type="text"]:focus {
 }
 .weapon-slot-item.empty { border-style: dashed; opacity: 0.35; cursor: default; }
 .weapon-slot-item.selected { border-color: #f1c40f; box-shadow: 0 0 8px #f1c40f; }
-.weapon-count-badge { position: absolute; bottom: 2px; right: 4px; font-size: 10px; background: rgba(0,0,0,0.6); border-radius: 3px; padding: 0 3px; }
 
 .weapon-details-panel {
     background: #2c3e50; border: 2px solid #f1c40f; border-radius: 10px;
@@ -831,19 +846,3 @@ input[type="text"]:focus {
 }
 .screen-shake { animation: screen-shake-kf 0.4s ease-in-out; }
 
-/* =========================================================================
-   ВИДИМЫЙ СПУТНИК (скелет/медведь и т.п., см. companion-баф)
-   ========================================================================= */
-.companion-card {
-    display: flex; align-items: center; gap: 6px;
-    background: rgba(0,0,0,0.35); border: 1px dashed #8e44ad; border-radius: 6px;
-    padding: 4px 8px; font-size: 12px; color: #d5c4e8;
-}
-.companion-icon { font-size: 18px; }
-.companion-label small { color: #95a5a6; }
-
-@keyframes companion-pulse-kf {
-    0%, 100% { box-shadow: 0 0 0 rgba(142, 68, 173, 0); }
-    50% { box-shadow: 0 0 12px 3px rgba(142, 68, 173, 0.9); }
-}
-.companion-card.pulse { animation: companion-pulse-kf 0.5s ease-in-out; }

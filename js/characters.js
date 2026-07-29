@@ -216,12 +216,34 @@ export function createCompanion(owner, companionData) {
     };
 }
 
+/**
+ * Готовит бойца к бою из записи каталога.
+ *
+ * ВАЖНО про baseHp. Раньше максимум здоровья считался прямо от `hero.hp`, то
+ * есть от поля, которое в бою постоянно меняется. Пока сюда попадали только
+ * записи каталога, всё сходилось. Но стоило подать уже инициализированного
+ * бойца — и цифры разъезжались:
+ *   - повторная инициализация живого Лешего давала 235 HP вместо 188
+ *     (150 → ×1.25 → 188 → ×1.25 → 235);
+ *   - инициализация ПОГИБШЕГО бойца (hp = 0) давала maxHp = 0, после чего
+ *     полоса здоровья считалась как 0/0 = NaN и в лог сыпалось
+ *     "наносит NaN урона".
+ * Теперь исходное значение запоминается в baseHp и берётся именно оно,
+ * поэтому функция идемпотентна: сколько раз её ни примени, результат один.
+ * Дополнительно результат проверяется на конечность, чтобы одна испорченная
+ * запись не расползлась NaN-ами по всему бою.
+ */
 export function initHeroStats(char, isBot, weaponId = null) {
     const hero = JSON.parse(JSON.stringify(char));
     const p = passivesSystem[hero.passive];
     hero.isBot = isBot;
 
-    hero.maxHp = Math.round(hero.hp * p.hpMult);
+    const baseHp = Number.isFinite(hero.baseHp) ? hero.baseHp : hero.hp;
+    if (!Number.isFinite(baseHp) || baseHp <= 0) {
+        throw new Error(`initHeroStats: у «${hero.name}» некорректное базовое здоровье (${baseHp})`);
+    }
+    hero.baseHp = baseHp;
+    hero.maxHp = Math.round(baseHp * p.hpMult);
     hero.hp = hero.maxHp;
     hero.initiativeScore = (hero.speed * 10) + p.initBonus;
 
