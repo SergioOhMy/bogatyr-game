@@ -21,6 +21,17 @@ import { getRandomWeapon } from './items.js';
 const TURN_SECONDS = 60;
 
 /**
+ * Множитель темпа автобоя. В режиме 'fast' (кнопка ×2) все паузы между
+ * действиями сжимаются вдвое - сама механика (урон, шансы, выбор ИИ) не
+ * меняется, ускоряется только ожидание между шагами. В 'normal' автобой
+ * идёт ровно в том же темпе, что и сейчас ходят боты (без ускорения) - так
+ * и просили: "не быстро, а обычным темпом".
+ */
+function battleDelay(ms) {
+    return state.autoBattleMode === 'fast' ? Math.round(ms / 2) : ms;
+}
+
+/**
  * Включает картинку арены на фоновом слое (arenaId) или гасит её (null),
  * когда игрок уходит с экрана боя.
  */
@@ -34,6 +45,7 @@ export function startCombat(arenaId, difficulty) {
     state.difficulty = difficulty || 'normal';
     state.playerSkipStreak = 0;
     state.battleOver = false;
+    state.autoBattleMode = 'off'; // каждый новый бой начинается вручную
 
     const remaining = baseCharacters.filter(c => !state.playerTeam.some(p => p.id === c.id));
     const shuffledBots = shuffle(remaining).slice(0, 3);
@@ -95,7 +107,9 @@ function toastUltimate(attacker, skill) {
 
 export function onTargetSelect(char) {
     let activeChar = state.turnQueue[state.currentTurnIndex];
-    if (activeChar.isBot || char.hp <= 0) return;
+    // Во время автобоя ходом игрока распоряжается ИИ (см. autoPlayerLogic) -
+    // ручные клики по бойцам в этот момент ни на что не должны влиять.
+    if (activeChar.isBot || state.autoBattleMode !== 'off' || char.hp <= 0) return;
 
     const skill = state.selectedSkill;
     if (!skill) {
@@ -210,14 +224,29 @@ export function startTurn() {
         activeChar.hp = 0;
         log(`<span class="death-log">💀 ${activeChar.name} погибает от последствий боя!</span>`);
         renderBattlefield(onTargetSelect);
-        setTimeout(checkWinCondition, 400);
+        setTimeout(checkWinCondition, battleDelay(400));
         return;
     }
 
+    beginActionPhase(activeChar);
+}
+
+/**
+ * Хвост хода: отрисовка умений и запуск ожидания действия - либо ход бота
+ * (свой setTimeout), либо автобой игрока (тоже setTimeout, но через ИИ), либо
+ * обычное ожидание клика с 60-секундным таймером.
+ *
+ * Вынесено из startTurn() отдельной функцией, чтобы её же мог вызвать
+ * setAutoBattleMode() при переключении режима ПРЯМО на ходу игрока - без
+ * повторного запуска эффектов начала хода (арена/яд/оглушение), которые уже
+ * применились один раз в startTurn() и не должны сработать дважды за один ход.
+ */
+function beginActionPhase(activeChar) {
     document.getElementById('turn-indicator').innerText = `Ходит: ${activeChar.name}`;
 
     const actionBtn = document.getElementById('execute-btn');
     checkActionState();
+    clearInterval(state.timerInterval);
     // ВАЖНО: кнопку больше не прячем через display:none - раньше это
     // заставляло весь низ экрана (лог боя и т.д.) прыгать вверх-вниз при
     // каждой смене хода игрок/бот. Вместо скрытия - просто блокируем её
@@ -231,23 +260,37 @@ export function startTurn() {
             ? `Ходит ваш помощник: ${activeChar.name}...`
             : `Ход противника: ${activeChar.name}...`;
         actionBtn.style.background = '#7f8c8d';
+
+        renderBattlefield(onTargetSelect);
+        renderSkills(activeChar, onSkillSelect);
+
+        // Таймер тикает ТОЛЬКО на ходу живого игрока (см. ветку ниже). Раньше
+        // он запускался и на ходу бота: бот обычно успевал за 1.5 сек, но
+        // если бы его ход по любой причине затянулся (исключение в логике,
+        // зависшая анимация), через 60 секунд срабатывал handleTurnTimeout и
+        // поражение за "пропуск хода" засчитывалось игроку — за ход, которого
+        // он не делал.
+        setTimeout(botLogic, battleDelay(1500));
+        return;
     }
 
     renderBattlefield(onTargetSelect);
     renderSkills(activeChar, onSkillSelect);
 
-    state.timeLeft = TURN_SECONDS;
-    document.getElementById('timer-display').innerText = state.timeLeft;
-
-    // Таймер тикает ТОЛЬКО на ходу живого игрока. Раньше он запускался и на
-    // ходу бота: бот обычно успевал за 1.5 сек, но если бы его ход по любой
-    // причине затянулся (исключение в логике, зависшая анимация), через 60
-    // секунд срабатывал handleTurnTimeout и поражение за "пропуск хода"
-    // засчитывалось игроку — за ход, которого он не делал.
-    if (activeChar.isBot) {
-        setTimeout(botLogic, 1500);
+    // Автобой на СВОЁМ ходу: та же механика, что и у бота выше (кнопка
+    // заблокирована, действие приходит по таймеру), только вместо
+    // "Ход противника" - "Автобой", и решение принимает тот же ИИ, что и у
+    // ботов (см. autoPlayerLogic).
+    if (state.autoBattleMode !== 'off') {
+        actionBtn.disabled = true;
+        actionBtn.innerText = `🤖 Автобой: ${activeChar.name}...`;
+        actionBtn.style.background = '#7f8c8d';
+        setTimeout(autoPlayerLogic, battleDelay(1500));
         return;
     }
+
+    state.timeLeft = TURN_SECONDS;
+    document.getElementById('timer-display').innerText = state.timeLeft;
 
     state.timerInterval = setInterval(() => {
         state.timeLeft--;
@@ -257,6 +300,46 @@ export function startTurn() {
             handleTurnTimeout(activeChar);
         }
     }, 1000);
+}
+
+/**
+ * Переключает режим автобоя ('off' | 'normal' | 'fast'), вызывается кнопками
+ * "Автобой" и "×2" из main.js. Если сейчас как раз ход самого игрока -
+ * применяет смену режима немедленно (перезапускает только хвост хода через
+ * beginActionPhase, не весь startTurn), а не откладывает эффект до следующего
+ * хода. Ход бота/помощника продолжится по собственной уже запущенной цепочке
+ * setTimeout независимо от режима - его трогать не нужно.
+ */
+export function setAutoBattleMode(mode) {
+    state.autoBattleMode = mode;
+    if (state.battleOver) return;
+    const activeChar = state.turnQueue[state.currentTurnIndex];
+    if (!activeChar || activeChar.hp <= 0 || activeChar.isBot) return;
+    beginActionPhase(activeChar);
+}
+
+/**
+ * Автобой на стороне игрока: решение принимает тот же ИИ, что и у ботов
+ * (chooseBotAction), вместо ожидания клика.
+ *
+ * Сложность ИИ здесь всегда 'hard', независимо от того, какую сложность
+ * игрок выставил для ВРАЖЕСКОГО бота (state.difficulty) - тот параметр про
+ * то, насколько силён противник, а не про то, насколько хорошо автобой
+ * играет за самого игрока. Включая автобой, игрок явно хочет побеждать
+ * эффективно, а не наблюдать нарочно слабую игру.
+ */
+function autoPlayerLogic() {
+    if (state.battleOver || state.autoBattleMode === 'off') return;
+    const activeChar = state.turnQueue[state.currentTurnIndex];
+    if (!activeChar || activeChar.hp <= 0 || activeChar.isBot) return; // ход уже сменился
+
+    const action = chooseBotAction(activeChar, state.playerTeam, state.enemyTeam, state.currentArena, 'hard');
+    if (!action) {
+        log(`⏳ <b>${activeChar.name}</b> восстанавливает силы (нет доступных навыков).`);
+        nextTurn();
+        return;
+    }
+    executeAction(activeChar, action.target, action.skill);
 }
 
 // Пропуск хода по таймеру (только у игрока - боты действуют раньше 60 сек):
@@ -366,12 +449,12 @@ export function executeAction(attacker, target, skill, isDoubleCast = false) {
         playDoubleCastFx(attacker);
         setTimeout(() => {
             executeAction(attacker, target, skill, true);
-        }, 1000);
+        }, battleDelay(1000));
         return;
     }
 
     renderBattlefield(onTargetSelect);
-    setTimeout(checkWinCondition, 800);
+    setTimeout(checkWinCondition, battleDelay(800));
 }
 
 // Баф/дебаф/dispel (v1.03). Одна функция обрабатывает и одиночную цель,
@@ -432,7 +515,7 @@ function executeBuffOrDispelAction(attacker, skill, target) {
 
     restore();
     renderBattlefield(onTargetSelect);
-    setTimeout(checkWinCondition, 700);
+    setTimeout(checkWinCondition, battleDelay(700));
 }
 
 // Призыв помощника (Кощей — скелет, Леший — медведь).
@@ -468,7 +551,7 @@ function executeSummonAction(attacker, skill) {
     }
 
     renderBattlefield(onTargetSelect);
-    setTimeout(checkWinCondition, 700);
+    setTimeout(checkWinCondition, battleDelay(700));
 }
 
 // Вампиризм ("Вытягивание душ" Кощея): отнимает у врага здоровье и ровно
@@ -502,7 +585,7 @@ function executeDrainAction(attacker, skill, target) {
     }
 
     renderBattlefield(onTargetSelect);
-    setTimeout(checkWinCondition, 800);
+    setTimeout(checkWinCondition, battleDelay(800));
 }
 
 // Массовое умение (aoe: true) - бьёт/лечит всю живую вражескую или свою
@@ -549,7 +632,7 @@ function executeAoeAction(attacker, skill) {
 
     restore();
     renderBattlefield(onTargetSelect);
-    setTimeout(checkWinCondition, 800);
+    setTimeout(checkWinCondition, battleDelay(800));
 }
 
 // Разовые временные модификаторы атакующего: штраф за пропуск хода (-25%)

@@ -9,7 +9,7 @@ import { arenas } from './arenas.js';
 import { specialCharacters, getSpecialCharacterById, resolvePromoCode } from './promocodes.js';
 import { getSkinsForHero, getHeroImage } from './skins.js';
 import { getWeaponById, getRandomWeapon, getDroppableWeapons } from './items.js';
-import { startCombat, executeAction, setArenaBackdrop, surrenderBattle } from './combat.js';
+import { startCombat, executeAction, setArenaBackdrop, surrenderBattle, setAutoBattleMode } from './combat.js';
 import { renderHeroDetails, renderInventoryHeroStats } from './ui.js';
 
 let screenAuth, screenMenu, screenBattle, screenArena, screenShop, screenInventory;
@@ -87,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
         screenBattle.style.display = 'block';
         setTitleVisible(false);
         startCombat(selectedArenaId, currentProfile.difficulty);
+        updateAutoBattleButtons(); // новый бой всегда начинается вручную (см. startCombat)
     };
 
     document.getElementById('btn-arena-back').onclick = () => {
@@ -96,6 +97,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Сдаться — подтверждение спрашивает сама surrenderBattle
     document.getElementById('btn-surrender').onclick = () => surrenderBattle();
+
+    // Автобой и ×2 — переключатели, взаимоисключающие между собой.
+    // Повторный клик по уже нажатой кнопке выключает автобой целиком;
+    // клик по ДРУГОЙ кнопке переключает режим - одна кнопка отжимается,
+    // другая нажимается (см. toggleAutoBattle).
+    document.getElementById('btn-auto-battle').onclick = () => toggleAutoBattle('normal');
+    document.getElementById('btn-auto-speed').onclick = () => toggleAutoBattle('fast');
 
     // Магазин - теперь отдельный экран с тремя вкладками
     document.getElementById('btn-goto-shop').onclick = () => showShop();
@@ -912,4 +920,27 @@ function openRulesModal() {
 
 function closeRulesModal() {
     document.getElementById('rules-modal-backdrop').style.display = 'none';
+}
+
+// --------------------------- Автобой ---------------------------
+
+/**
+ * Клик по "Автобой" или "×2". Кнопки взаимоисключающие: клик по уже
+ * нажатой кнопке выключает автобой целиком (mode -> 'off'), клик по другой
+ * кнопке переключает режим - именно так и просили: "если переключаешь режим,
+ * то одна кнопка отжимается, а другая нажимается", а не обе горят разом.
+ */
+function toggleAutoBattle(mode) {
+    const next = (state.autoBattleMode === mode) ? 'off' : mode;
+    setAutoBattleMode(next);
+    updateAutoBattleButtons();
+}
+
+/** Синхронизирует "вдавленный" вид кнопок с текущим state.autoBattleMode. */
+function updateAutoBattleButtons() {
+    const autoBtn = document.getElementById('btn-auto-battle');
+    const speedBtn = document.getElementById('btn-auto-speed');
+    if (!autoBtn || !speedBtn) return;
+    autoBtn.classList.toggle('active', state.autoBattleMode === 'normal');
+    speedBtn.classList.toggle('active', state.autoBattleMode === 'fast');
 }

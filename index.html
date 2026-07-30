@@ -15,7 +15,7 @@
          фиксированного размера от высоты содержимого не зависит вообще. -->
     <div id="arena-backdrop" class="arena-backdrop"></div>
 
-    <div class="version-badge">v1.13</div>
+    <div class="version-badge">v1.14</div>
 
     <div class="title-wrap" id="title-wrap">
         <img src="assets/title_logo.png" alt="Битва Богатырей: Легенды Руси" class="game-title-img">
@@ -295,10 +295,15 @@
              на телефоне, и до лога боя приходилось долго прокручивать. -->
         <!-- Кнопка "Сдаться" живёт в этой же строке, а не отдельным блоком:
              экран боя специально помещается целиком без прокрутки, и любой
-             новый блок внизу снова заставил бы прокручивать до лога. -->
+             новый блок внизу снова заставил бы прокручивать до лога. Автобой
+             и ×2 - туда же: .battle-arena тянется резиново и обрезается
+             многоточием при нехватке места (см. CSS), а кнопки справа не
+             сжимаются, поэтому весь ряд не переносится и не толкает поле боя. -->
         <div class="battle-topbar">
             <span id="arena-label" class="battle-arena"></span>
             <span class="battle-timer">⏱ <span id="timer-display">60</span></span>
+            <button id="btn-auto-battle" class="auto-battle-btn" title="Автобой: герои сражаются сами, обычный темп">🤖 Авто</button>
+            <button id="btn-auto-speed" class="auto-speed-btn" title="Автобой в ускоренном темпе">×2</button>
             <button id="btn-surrender" class="surrender-btn" title="Признать поражение и выйти в меню">🏳️ Сдаться</button>
         </div>
 

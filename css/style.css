@@ -552,15 +552,25 @@ body {
    экрана боя и ради него приходилось прокручивать поле до лога. Сама арена
    и так видна фоном и подписана в строке статуса. */
 
-/* Компактная строка статуса боя */
+/* Компактная строка статуса боя. gap уменьшен с 10 до 6px, чтобы после
+   добавления кнопок автобоя ряд по-прежнему помещался в одну строку на
+   узких экранах без переноса. */
 .battle-topbar {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; margin-bottom: 10px; font-size: 15px;
+    gap: 6px; margin-bottom: 10px; font-size: 15px;
 }
-.battle-arena { color: #f1c40f; font-weight: bold; text-align: left; }
+/* Резиновая: у арен разная длина названия ("Чистое поле" против "Грозовые
+   небеса"), а кнопки справа (автобой/×2/сдаться) должны оставаться
+   фиксированного размера и не переноситься на вторую строку. Поэтому именно
+   метка арены сжимается первой и обрезается многоточием, если места мало -
+   остальной ряд от этого не страдает. */
+.battle-arena {
+    color: #f1c40f; font-weight: bold; text-align: left;
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .battle-timer {
     background: rgba(0,0,0,0.45); border-radius: 20px; padding: 4px 12px;
-    font-weight: bold; color: #fff; white-space: nowrap;
+    font-weight: bold; color: #fff; white-space: nowrap; flex-shrink: 0;
 }
 #timer-display { font-size: 18px; font-weight: bold; color: #e74c3c; }
 
@@ -570,9 +580,40 @@ body {
     margin-top: 0; padding: 5px 10px; font-size: 13px; min-height: 0;
     background: linear-gradient(180deg, #7f8c8d, #5d6d6e);
     border-bottom-width: 2px; border-radius: 8px; box-shadow: none;
-    white-space: nowrap; opacity: 0.85;
+    white-space: nowrap; opacity: 0.85; flex-shrink: 0;
 }
 .surrender-btn:hover:not(:disabled) { opacity: 1; filter: brightness(1.1); }
+
+/* =========================================================================
+   АВТОБОЙ (v1.14)
+   Две кнопки-переключателя в той же строке статуса. Логика "утопленной"
+   кнопки - в main.js: своя, персональная нажатость каждой (класс .active),
+   а не браузерное :active (которое живёт только пока палец физически на
+   экране) - именно так и просили: "нажал - провалилась и осталась
+   нажатой, нажал другую - эта отжалась, другая нажалась".
+   ========================================================================= */
+.auto-battle-btn, .auto-speed-btn {
+    margin-top: 0; padding: 5px 10px; font-size: 13px; min-height: 0;
+    background: linear-gradient(180deg, #3d566e, #24333f);
+    border-bottom-width: 2px; border-radius: 8px;
+    white-space: nowrap; opacity: 0.9; flex-shrink: 0;
+}
+.auto-speed-btn { padding: 5px 9px; min-width: 0; }
+.auto-battle-btn:hover:not(:disabled), .auto-speed-btn:hover:not(:disabled) {
+    opacity: 1; filter: brightness(1.12);
+}
+/* Активное состояние — визуально "вдавлено" и остаётся таким до следующего
+   клика (см. .active в JS), а не только пока палец на кнопке. */
+.auto-battle-btn.active {
+    background: linear-gradient(180deg, #1e8449, #145a32);
+    border-bottom-width: 1px; transform: translateY(2px);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); opacity: 1;
+}
+.auto-speed-btn.active {
+    background: linear-gradient(180deg, #d68910, #9c640c);
+    border-bottom-width: 1px; transform: translateY(2px);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); opacity: 1;
+}
 
 /* "Ходит: ..." переехало ПОД карточки и стало неброской строкой. Обёртка
    вокруг него - position:relative только затем, чтобы служить точкой

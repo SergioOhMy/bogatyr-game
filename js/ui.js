@@ -161,12 +161,18 @@ export function renderSkills(char, onSkillSelect) {
     // одной и той же высоты: на ходу бота его умения просто показываются
     // затемнёнными и неактивными.
 
+    // Во время автобоя (см. state.autoBattleMode) ход СВОЕГО героя решает тот
+    // же ИИ, что и у ботов (combat.js -> autoPlayerLogic) - кнопки умений на
+    // это время затемняются и блокируются так же, как на ходу настоящего
+    // бота, чтобы случайный клик игрока не спорил с автоматическим выбором.
+    const autoPlaying = !char.isBot && state.autoBattleMode !== 'off';
+
     char.skills.forEach(skill => {
         let btn = document.createElement('button');
         const turnsUntilUnlock = skill.unlockTurn - char.turnsTaken;
         const isLocked = turnsUntilUnlock > 0;
         const isSpecial = skill.type === 'buff' || skill.type === 'dispel' || skill.type === 'summon';
-        btn.className = 'skill-btn' + (skill.isUltimate ? ' ultimate-btn' : '') + (isLocked ? ' skill-locked' : '') + (isSpecial ? ' special-btn' : '') + (char.isBot ? ' skill-btn-bot' : '');
+        btn.className = 'skill-btn' + (skill.isUltimate ? ' ultimate-btn' : '') + (isLocked ? ' skill-locked' : '') + (isSpecial ? ' special-btn' : '') + ((char.isBot || autoPlaying) ? ' skill-btn-bot' : '');
         if (state.selectedSkill === skill) btn.classList.add('selected-skill');
 
         let cdLeft = char.currentCooldowns[skill.name];
@@ -200,7 +206,7 @@ export function renderSkills(char, onSkillSelect) {
 
         let innerHtml = `<div><span>${skill.icon}</span> <b>${displayName}</b>${skill.isUltimate ? ' <span class="ult-tag">ULT</span>' : ''}${skill.aoe ? ' <span class="ult-tag">ВСЕ</span>' : ''}</div> ${displayLine}`;
 
-        if (char.isBot) {
+        if (char.isBot || autoPlaying) {
             btn.disabled = true;
         } else if (uselessHeal) {
             btn.disabled = true;
@@ -213,7 +219,7 @@ export function renderSkills(char, onSkillSelect) {
         }
 
         btn.innerHTML = innerHtml;
-        if (!char.isBot && !isLocked && cdLeft === 0) btn.onclick = () => onSkillSelect(skill, btn);
+        if (!char.isBot && !autoPlaying && !isLocked && cdLeft === 0) btn.onclick = () => onSkillSelect(skill, btn);
         container.appendChild(btn);
     });
 }
