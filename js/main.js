@@ -2,7 +2,7 @@ import {
     state, currentProfile, allProfiles, loadProfile, createProfile,
     deleteProfile, buyHero, selectProfile, setDifficulty, redeemPromoCode,
     buySkin, equipSkin, addWeaponToInventory, equipWeapon, sellWeapon,
-    INVENTORY_CAPACITY, grantChestReward, isInventoryFull
+    INVENTORY_CAPACITY, grantChestReward, isInventoryFull, markRulesSeen
 } from './state.js';
 import { baseCharacters, passivesSystem } from './characters.js';
 import { arenas } from './arenas.js';
@@ -147,6 +147,21 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('promo-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') submitPromoCode();
     });
+
+    // Правила игры
+    document.getElementById('btn-open-rules').onclick = () => openRulesModal();
+    document.getElementById('btn-rules-close').onclick = () => closeRulesModal();
+    document.getElementById('btn-rules-close-x').onclick = () => closeRulesModal();
+    document.getElementById('rules-modal-backdrop').onclick = (e) => {
+        if (e.target.id === 'rules-modal-backdrop') closeRulesModal();
+    };
+    // Подсказка новичку на главном экране: "Открыть" ведёт в те же правила,
+    // крестик просто скрывает баннер — в обоих случаях больше не показываем.
+    document.getElementById('btn-rules-nudge-open').onclick = () => openRulesModal();
+    document.getElementById('btn-rules-nudge-dismiss').onclick = () => {
+        markRulesSeen();
+        document.getElementById('menu-rules-nudge').style.display = 'none';
+    };
 });
 
 function setTitleVisible(visible) {
@@ -285,6 +300,16 @@ export function showMenu() {
     const stats = currentProfile.stats || { wins: 0, losses: 0, battles: 0 };
     const statsEl = document.getElementById('ui-stats');
     if (statsEl) statsEl.textContent = `Побед: ${stats.wins} · Поражений: ${stats.losses} · Всего боёв: ${stats.battles}`;
+
+    const hudAvatar = document.getElementById('menu-hud-avatar');
+    if (hudAvatar) hudAvatar.style.backgroundImage = `url('${currentProfile.avatar || 'assets/ilya.png'}')`;
+    const hudName = document.getElementById('menu-hud-name');
+    if (hudName) hudName.textContent = currentProfile.name;
+
+    // Подсказка про инструкцию - только для профиля, который её ещё не видел
+    // и не закрывал крестиком (см. state.js -> markRulesSeen).
+    const nudge = document.getElementById('menu-rules-nudge');
+    if (nudge) nudge.style.display = currentProfile.rulesSeen ? 'none' : 'flex';
 
     const difficulty = currentProfile.difficulty || 'normal';
     document.querySelectorAll('input[name="difficulty"]').forEach(input => {
@@ -847,4 +872,44 @@ async function submitPromoCode() {
             showMenu(); // перерисовать дружину, чтобы показать нового/постоянного героя
         }, 1200);
     }
+}
+
+// --------------------------- Правила игры ---------------------------
+
+// Списки пассивок и арен заполняются из тех же данных, что используются в
+// самой игре (passivesSystem, arenas), а не переписаны текстом вручную —
+// иначе при следующей правке баланса (см. balance-report.md) инструкция
+// молча разошлась бы с реальными цифрами.
+let rulesContentBuilt = false;
+function buildRulesContent() {
+    if (rulesContentBuilt) return;
+    rulesContentBuilt = true;
+
+    const passivesList = document.getElementById('rules-passives-list');
+    Object.values(passivesSystem).forEach(p => {
+        const li = document.createElement('li');
+        li.innerHTML = `<b>${p.name}</b> — ${p.desc}`;
+        passivesList.appendChild(li);
+    });
+
+    const arenasList = document.getElementById('rules-arenas-list');
+    arenas.forEach(a => {
+        const li = document.createElement('li');
+        li.innerHTML = `${a.icon} <b>${a.name}</b> — ${a.desc}`;
+        arenasList.appendChild(li);
+    });
+}
+
+function openRulesModal() {
+    buildRulesContent();
+    document.getElementById('rules-modal-backdrop').style.display = 'flex';
+    // Открыли инструкцию хотя бы раз - подсказку на главном экране больше
+    // показывать не нужно, даже если закрыть модалку крестиком.
+    markRulesSeen();
+    const nudge = document.getElementById('menu-rules-nudge');
+    if (nudge) nudge.style.display = 'none';
+}
+
+function closeRulesModal() {
+    document.getElementById('rules-modal-backdrop').style.display = 'none';
 }

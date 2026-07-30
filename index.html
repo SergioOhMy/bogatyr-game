@@ -15,7 +15,7 @@
          фиксированного размера от высоты содержимого не зависит вообще. -->
     <div id="arena-backdrop" class="arena-backdrop"></div>
 
-    <div class="version-badge">v1.11</div>
+    <div class="version-badge">v1.12</div>
 
     <div class="title-wrap" id="title-wrap">
         <img src="assets/title_logo.png" alt="Битва Богатырей: Легенды Руси" class="game-title-img">
@@ -49,10 +49,42 @@
     </div>
 
     <!-- 2. ГЛАВНОЕ МЕНЮ (только дружина, без магазина - магазин теперь отдельным экраном) -->
+    <!-- Раскладка переработана под "всё под рукой, без прокрутки в поисках
+         кнопки": HUD-строка с профилем и монетами сверху, ряд действий
+         (магазин/инвентарь/промокод/правила) сразу под ней в одну линию, а
+         "В бой!" закреплена внизу экрана (position: sticky) и всегда видна,
+         даже если список героев длинный и прокручен — как главная кнопка
+         действия в мобильных играх. -->
     <div id="screen-menu" class="screen" style="display: none;">
 
+        <div class="menu-hud">
+            <div class="menu-hud-profile">
+                <div class="menu-hud-avatar" id="menu-hud-avatar"></div>
+                <div class="menu-hud-info">
+                    <b id="menu-hud-name"></b>
+                    <small id="ui-stats" class="stats-line"></small>
+                </div>
+            </div>
+            <div class="menu-hud-coins">💰 <span id="ui-coins-inline">0</span></div>
+        </div>
+
+        <div class="menu-quick-actions">
+            <button id="btn-goto-shop" class="quick-action-btn"><span class="quick-action-icon">🛒</span><span>Магазин</span></button>
+            <button id="btn-goto-inventory" class="quick-action-btn"><span class="quick-action-icon">🎒</span><span>Инвентарь</span></button>
+            <button id="btn-open-promo" class="quick-action-btn"><span class="quick-action-icon">🎁</span><span>Промокод</span></button>
+            <button id="btn-open-rules" class="quick-action-btn"><span class="quick-action-icon">📖</span><span>Правила</span></button>
+        </div>
+
+        <!-- Ненавязчивая подсказка новичку - см. main.js maybeShowRulesNudge().
+             Не блокирует ничего, скрывается либо открытием правил, либо
+             крестиком, и больше никогда не появляется для этого профиля. -->
+        <div id="menu-rules-nudge" class="menu-rules-nudge" style="display:none;">
+            <span>👋 Новичок? Загляните в «Правила» — коротко про бой, героев и магазин.</span>
+            <button id="btn-rules-nudge-open" class="rules-nudge-open">Открыть</button>
+            <button id="btn-rules-nudge-dismiss" class="rules-nudge-x" title="Скрыть">✕</button>
+        </div>
+
         <h2 class="squad-title">Собери свою дружину (Выберите 3-х героев)</h2>
-        <p id="ui-stats" class="stats-line"></p>
 
         <div id="ui-my-heroes" class="heroes-grid"></div>
         <div id="menu-hero-details" class="hero-details-panel"></div>
@@ -64,17 +96,13 @@
             <label><input type="radio" name="difficulty" value="hard"> Сложная (+90💰)</label>
         </div>
 
-        <div class="menu-actions" style="margin-top: 20px; margin-bottom: 20px;">
-            <button id="btn-battle" class="primary-btn" disabled>В бой!</button>
-            <br>
-            <button id="btn-goto-inventory" style="margin-top: 12px; background:#8e44ad;">🎒 Инвентарь</button>
-            <br>
-            <button id="btn-goto-shop" style="margin-top: 12px; background:#16a085;">🛒 Магазин героев (<span id="ui-coins-inline">0</span> 💰)</button>
-            <br>
-            <button id="btn-open-promo" class="promo-btn">🎁 Ввести промокод</button>
-        </div>
+        <button id="btn-logout" class="danger-btn small-btn menu-logout-btn">Сменить профиль</button>
 
-        <button id="btn-logout" class="danger-btn" style="margin-top: 10px;">Сменить профиль</button>
+        <!-- Отступ снизу, чтобы последние герои и кнопка "Сменить профиль" не
+             прятались под закреплённой кнопкой "В бой!". -->
+        <div class="menu-bottom-spacer"></div>
+
+        <button id="btn-battle" class="primary-btn battle-cta" disabled>⚔️ В бой!</button>
     </div>
 
     <!-- 2.1 ЭКРАН ИНВЕНТАРЯ -->
@@ -173,6 +201,81 @@
         </div>
     </div>
 
+    <!-- 2.4.1 ПРАВИЛА ИГРЫ -->
+    <!-- Разделы на <details>: открывается только то, что интересно читателю
+         прямо сейчас, не нужно листать одну длинную простыню текста ради
+         одного абзаца. Первый раздел открыт по умолчанию для контекста. -->
+    <div id="rules-modal-backdrop" class="promo-modal-backdrop" style="display: none;">
+        <div class="promo-modal rules-modal">
+            <button id="btn-rules-close-x" class="rules-close-x" title="Закрыть">✕</button>
+            <h2 class="rules-title">📖 Как играть</h2>
+            <div class="rules-body">
+                <details open>
+                    <summary>🎯 Цель и ход боя</summary>
+                    <ul>
+                        <li>Собери дружину из 3 богатырей и победи вражескую тройку — бой заканчивается, когда одна из команд гибнет вся целиком.</li>
+                        <li>Очередь ходов <b>общая для обеих команд сразу</b> и считается по инициативе (скорость героя × 10 + бонус пассивки) — ходят не «сначала все ваши, потом все вражеские», а вперемешку, кто быстрее.</li>
+                        <li>Кто оказался медленнее и вступает в бой позже — получает разовый бонус «Внезапный натиск»: +15% к первому действию, чтобы компенсировать невыгодный старт.</li>
+                    </ul>
+                </details>
+                <details>
+                    <summary>🧠 Умения</summary>
+                    <ul>
+                        <li>У каждого героя 4 умения. Первая атака доступна с 1-го хода без отката, ещё одно открывается на 1–2 ходу, третье — со 2-го, а мощное <b>ультимативное</b> — только с 4-го хода боя.</li>
+                        <li>У большинства умений есть откат (кулдаун) в ходах — применили, теперь ждите.</li>
+                        <li>Кроме атаки и лечения бывают: <b>баф/дебaф</b> (усиление себе или дружине, ослабление врагу), <b>дизел</b> (снимает чужие эффекты), <b>призыв помощника</b> и <b>вампиризм</b> (у Кощея — отнимает у врага здоровье и отдаёт себе).</li>
+                    </ul>
+                </details>
+                <details>
+                    <summary>✨ Пассивные способности</summary>
+                    <p>У каждого героя одна из шести пассивок, определяющих его стиль боя:</p>
+                    <ul id="rules-passives-list"></ul>
+                </details>
+                <details>
+                    <summary>🌍 Расы и арены</summary>
+                    <p>У каждого героя есть раса — человек, нежить, дух или тварь. Арена, на которой идёт бой, может усиливать или ослаблять бойцов определённой расы:</p>
+                    <ul id="rules-arenas-list"></ul>
+                </details>
+                <details>
+                    <summary>☠️ Статусы на поле боя</summary>
+                    <ul>
+                        <li><b>Яд / ожог</b> — тикающий урон несколько ходов подряд, показан значком на карточке бойца.</li>
+                        <li><b>Оглушение</b> — пропуск хода целиком.</li>
+                        <li><b>Уворот / невидимость</b> — шанс полностью избежать атаки; портрет бойца становится полупрозрачным, пока эффект действует.</li>
+                        <li><b>Бафы и дебaфы</b> (усиление урона, снижение получаемого урона и т.п.) — показаны значками рядом с полосой здоровья; наведите на значок, чтобы увидеть эффект и сколько ходов осталось.</li>
+                    </ul>
+                </details>
+                <details>
+                    <summary>🐺 Помощники (скелет, медведь)</summary>
+                    <ul>
+                        <li>Кощей и Леший умеют призывать помощника. Это отдельный боец со своим здоровьем — он встаёт в общую очередь ходов и бьётся сам.</li>
+                        <li>Помощника можно лечить (без отката умения!), а можно выбрать целью атаки — как обычного бойца.</li>
+                        <li>Если хозяин погибает, помощник рассыпается вместе с ним.</li>
+                    </ul>
+                </details>
+                <details>
+                    <summary>⏱️ Таймер хода и отступление</summary>
+                    <ul>
+                        <li>На ход даётся 60 секунд. Не успели — штраф −25% на следующее действие. Не успели второй раз подряд — поражение.</li>
+                        <li>В любой момент боя можно нажать «🏳️ Сдаться» (с подтверждением) — засчитывается как обычное поражение, без сундука.</li>
+                    </ul>
+                </details>
+                <details>
+                    <summary>🛒 Магазин, сундуки и инвентарь</summary>
+                    <ul>
+                        <li>Монеты — награда за победу, размер зависит от сложности бота (лёгкая/средняя/сложная).</li>
+                        <li>Цена героя в магазине — это <b>не сила</b>, а количество тактических возможностей, которые он даёт команде.</li>
+                        <li>Образы — чисто косметика: стоят одинаково и не влияют на бой.</li>
+                        <li>Сундуки дают оружие: обычный — случайное, эпический — выбираете сами (падает после победы или покупается в магазине).</li>
+                        <li>Инвентарь — 15 ячеек, в каждой одна единица оружия. У оружия есть «родной» герой, на котором эффект сильнее.</li>
+                        <li>Промокоды одноразовые на профиль: дают героя (на один бой или навсегда) либо монеты.</li>
+                    </ul>
+                </details>
+            </div>
+            <button id="btn-rules-close" class="primary-btn">Понятно, начнём!</button>
+        </div>
+    </div>
+
     <!-- 2.5. ЭКРАН ВЫБОРА АРЕНЫ -->
     <div id="screen-arena" class="screen" style="display: none;">
         <h2 class="squad-title">Выберите арену</h2>
@@ -200,6 +303,12 @@
         </div>
 
         <div class="battlefield">
+            <!-- Всплывающие подсказки о событиях, которые не видны через
+                 обычные цифры урона/лечения на карточке: призыв помощника,
+                 его гибель, оглушение, ультимативное умение, снятие бафов.
+                 См. js/ui.js -> showBattleToast. pointer-events: none, чтобы
+                 не мешать кликам по бойцам под ней. -->
+            <div id="battle-toast-layer" class="battle-toast-layer"></div>
             <div id="player-team" class="team mine"></div>
             <div id="enemy-team" class="team enemy"></div>
         </div>

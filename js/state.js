@@ -37,6 +37,11 @@ function ensureProfileShape(p) {
     if (!p.equippedSkins || typeof p.equippedSkins !== 'object') p.equippedSkins = {};
     if (!Array.isArray(p.inventory)) p.inventory = [];
     if (!p.equippedWeapons || typeof p.equippedWeapons !== 'object') p.equippedWeapons = {};
+    // Профили, загруженные из старого сохранения (созданные до появления
+    // инструкции), уже прошли меню без неё — нет смысла нагонять им подсказку
+    // задним числом. Явно false ставится только в createProfile() для НОВЫХ
+    // профилей, поэтому здесь дефолт — "уже видел".
+    if (typeof p.rulesSeen !== 'boolean') p.rulesSeen = true;
     return p;
 }
 
@@ -76,11 +81,20 @@ export function createProfile(name, selectedHeroes, avatarImg) {
         name: name,
         coins: 0,
         avatar: avatarImg || 'assets/ilya.png',
-        unlockedHeroes: selectedHeroes
+        unlockedHeroes: selectedHeroes,
+        rulesSeen: false // новый профиль ещё не открывал инструкцию - см. main.js maybeShowRulesNudge
     });
     allProfiles.push(newProfile);
     currentProfile = newProfile;
     saveAllProfiles();
+}
+
+/** Отмечает, что игрок открыл или явно скрыл подсказку про инструкцию — больше не показываем её этому профилю. */
+export function markRulesSeen() {
+    if (currentProfile && !currentProfile.rulesSeen) {
+        currentProfile.rulesSeen = true;
+        saveProfile();
+    }
 }
 
 function saveAllProfiles() {

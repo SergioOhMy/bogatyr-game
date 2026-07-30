@@ -846,3 +846,147 @@ input[type="text"]:focus {
 }
 .screen-shake { animation: screen-shake-kf 0.4s ease-in-out; }
 
+/* =========================================================================
+   HUD ГЛАВНОГО МЕНЮ + РЯД БЫСТРЫХ ДЕЙСТВИЙ
+   Раньше "Магазин"/"Инвентарь"/"Промокод" стояли в столбик через <br>,
+   разного цвета и веса, а монеты были спрятаны в подписи кнопки магазина -
+   приходилось прокручивать и вчитываться, чтобы найти нужное. Теперь профиль
+   и монеты - одна строка сверху, а сами разделы - один ряд одинаковых
+   иконок-кнопок, всё видно и достаётся одним взглядом/тапом.
+   ========================================================================= */
+.menu-hud {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: rgba(0,0,0,0.25); border-radius: 12px; padding: 8px 12px; margin-bottom: 10px;
+}
+.menu-hud-profile { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.menu-hud-avatar {
+    width: 42px; height: 42px; border-radius: 50%; background-size: cover; background-position: center;
+    border: 2px solid #f1c40f; flex-shrink: 0;
+}
+.menu-hud-info { text-align: left; min-width: 0; }
+.menu-hud-info b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+.menu-hud-info .stats-line { margin: 0; font-size: 11px; white-space: nowrap; }
+.menu-hud-coins {
+    font-size: 16px; font-weight: bold; color: #f1c40f; white-space: nowrap;
+    background: rgba(0,0,0,0.3); border-radius: 20px; padding: 5px 12px; flex-shrink: 0;
+}
+
+.menu-quick-actions {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 12px;
+}
+.quick-action-btn {
+    margin: 0; padding: 10px 4px; font-size: 12px; font-weight: bold;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: linear-gradient(180deg, #3d566e, #2c3e50); border-bottom-width: 3px;
+}
+.quick-action-icon { font-size: 22px; }
+
+.menu-logout-btn { margin-top: 14px; }
+
+/* Ненавязчивая подсказка новичку про инструкцию (см. main.js -> showMenu). */
+.menu-rules-nudge {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: rgba(142, 68, 173, 0.25); border: 1px solid #8e44ad; border-radius: 10px;
+    padding: 8px 10px; margin-bottom: 12px; font-size: 13px; text-align: left;
+}
+.menu-rules-nudge span { flex: 1 1 200px; }
+.rules-nudge-open { margin: 0; padding: 6px 12px; font-size: 12px; background: linear-gradient(180deg, #9b59b6, #8e44ad); }
+.rules-nudge-x {
+    margin: 0; padding: 4px 9px; font-size: 12px; background: transparent; border: 1px solid rgba(255,255,255,0.3);
+    box-shadow: none;
+}
+
+/* Закреплённая крупная кнопка "В бой" - главное CTA-действие, всегда под
+   рукой, даже если список героев длинный и прокручен вниз (тот же приём,
+   что и у .sticky-back, только это основное действие, а не второстепенное). */
+.battle-cta {
+    position: sticky; bottom: 14px; z-index: 50;
+    display: block; width: 100%; max-width: 380px; margin: 6px auto 0;
+    font-size: 19px; padding: 15px; box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+}
+.menu-bottom-spacer { height: 4px; }
+
+@media (max-width: 768px) {
+    .menu-hud-info .stats-line { display: none; } /* на узком экране статистика уступает место монетам */
+    .quick-action-btn { font-size: 11px; padding: 9px 2px; }
+    .quick-action-icon { font-size: 20px; }
+}
+
+/* =========================================================================
+   ПРАВИЛА ИГРЫ
+   ========================================================================= */
+.rules-modal { max-width: 560px; text-align: left; position: relative; padding-top: 20px; }
+.rules-title { margin: 0 0 12px; text-align: center; font-size: 22px; }
+.rules-close-x {
+    position: absolute; top: 10px; right: 10px; margin: 0; padding: 4px 10px;
+    font-size: 14px; background: transparent; border: 1px solid rgba(255,255,255,0.3); box-shadow: none;
+}
+.rules-body { max-height: 60vh; overflow-y: auto; margin-bottom: 14px; padding-right: 4px; }
+.rules-body details {
+    background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+    margin-bottom: 8px; padding: 4px 12px;
+}
+.rules-body summary {
+    cursor: pointer; font-weight: bold; padding: 8px 0; font-size: 14px; list-style: none;
+}
+.rules-body summary::-webkit-details-marker { display: none; }
+.rules-body summary::before { content: '▸ '; color: #f1c40f; }
+.rules-body details[open] summary::before { content: '▾ '; }
+.rules-body details[open] summary { border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 6px; }
+.rules-body ul, .rules-body p { margin: 6px 0 10px; padding-left: 20px; font-size: 13px; line-height: 1.5; color: #ecf0f1; }
+.rules-body li { margin-bottom: 5px; }
+.rules-body p { padding-left: 0; }
+
+/* =========================================================================
+   ВСПЛЫВАЮЩИЕ ПОДСКАЗКИ ПО ЦЕНТРУ ПОЛЯ БОЯ (v1.12)
+   Показывают события, которых не видно через обычные цифры урона на
+   карточке бойца: призыв/гибель помощника, оглушение, ультимативное умение,
+   снятие бафов. Появляются и тают "как туман" - см. js/ui.js -> showBattleToast.
+   ========================================================================= */
+.battle-toast-layer {
+    position: absolute; inset: 0; z-index: 15;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    pointer-events: none; /* не мешает кликам по бойцам под подсказкой */
+    padding: 10px;
+}
+/* Появление — через @keyframes, а не через transition + класс, добавляемый
+   из JS следующим кадром. Анимация стартует сама, как только элемент
+   вставлен в DOM, и не зависит от requestAnimationFrame — та не вызывается,
+   пока вкладка не в фокусе, и тогда переход, ждущий кадра отрисовки, не
+   срабатывал вовсе (подсказка всё время жизни оставалась прозрачной). */
+.battle-toast {
+    background: rgba(20, 25, 32, 0.82);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 20px;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    max-width: 90%;
+    text-align: center;
+    opacity: 0;
+    animation: battle-toast-in-kf 0.35s ease forwards;
+}
+@keyframes battle-toast-in-kf {
+    from { opacity: 0; transform: scale(0.9) translateY(6px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.battle-toast-hide {
+    /* "Растворяется как туман": не просто исчезает, а расплывается и уплывает вверх */
+    animation: battle-toast-out-kf 0.55s ease forwards;
+}
+@keyframes battle-toast-out-kf {
+    from { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+    to   { opacity: 0; transform: scale(1.05) translateY(-10px); filter: blur(4px); }
+}
+.battle-toast-summon  { border-color: #8e44ad; box-shadow: 0 4px 14px rgba(142, 68, 173, 0.45); }
+.battle-toast-debuff  { border-color: #e74c3c; box-shadow: 0 4px 14px rgba(231, 76, 60, 0.4); }
+.battle-toast-buff    { border-color: #3498db; box-shadow: 0 4px 14px rgba(52, 152, 219, 0.4); }
+.battle-toast-ultimate{ border-color: #f1c40f; box-shadow: 0 4px 14px rgba(241, 196, 15, 0.45); }
+
+@media (max-width: 768px) {
+    .battle-toast { font-size: 12px; padding: 6px 12px; }
+}
+

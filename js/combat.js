@@ -4,7 +4,8 @@ import { initHeroStats, baseCharacters, createCompanion } from './characters.js'
 import {
     log, clearLog, renderBattlefield, renderSkills, checkActionState,
     playHitFx, playMissFx, playDodgeFx, playBlockFx,
-    playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx, playBuffFx
+    playHealFx, playRegenFx, playDoubleCastFx, playDeathFx, playUltimateFx, playBuffFx,
+    showBattleToast, clearBattleToasts
 } from './ui.js';
 import {
     buildTurnQueue, tickCooldowns, resolveAction, applyArenaTurnStart,
@@ -65,9 +66,11 @@ export function startCombat(arenaId, difficulty) {
     // Лог накапливался от боя к бою: новая партия дописывалась под старой,
     // и через несколько боёв подряд игрок открывал бой уже с чужой историей.
     clearLog();
+    clearBattleToasts(); // подсказки из прошлого боя не должны всплывать поверх нового
     log(`<b>${state.currentArena.icon} Арена: ${state.currentArena.name}.</b> ${state.currentArena.desc}`);
     if (underdogFirstActor) {
         log(`🌀 <b>${underdogFirstActor.name}</b> входит в бой вторым и получает "Внезапный натиск": +15% к следующему действию.`);
+        showBattleToast(`🌀 ${underdogFirstActor.name}: Внезапный натиск (+15%)`, 'buff');
     }
     startTurn();
 }
@@ -79,6 +82,15 @@ export function startCombat(arenaId, difficulty) {
  */
 function isSelfHeal(skill) {
     return skill.type === 'heal' && skill.healTarget === 'self';
+}
+
+/**
+ * Всплывающая подсказка про ультимативное умение — общая для всех 5 мест,
+ * где может сработать playUltimateFx (атака/лечение/баф/aoe/вампиризм),
+ * чтобы не дублировать один и тот же текст в каждой ветке.
+ */
+function toastUltimate(attacker, skill) {
+    showBattleToast(`⚡ ${attacker.name}: ${skill.icon} ${skill.name}!`, 'ultimate');
 }
 
 export function onTargetSelect(char) {
@@ -168,6 +180,7 @@ export function startTurn() {
     if (hasBuff(activeChar, 'stun')) {
         tickBuffs(activeChar);
         log(`💫 <b>${activeChar.name}</b> оглушён и пропускает ход!`);
+        showBattleToast(`💫 ${activeChar.name} оглушён и пропускает ход`, 'debuff');
         renderBattlefield(onTargetSelect);
         nextTurn();
         return;
@@ -263,6 +276,7 @@ function handleTurnTimeout(activeChar) {
     }
     activeChar.timeoutDebuff = true;
     log(`⏳ <b>${activeChar.name}</b> задумался и пропустил ход! Следующее действие ослаблено на 25%.`);
+    showBattleToast(`⏳ ${activeChar.name}: пропуск хода (−25% к следующему действию)`, 'debuff');
     nextTurn();
 }
 
@@ -318,7 +332,7 @@ export function executeAction(attacker, target, skill, isDoubleCast = false) {
             log(`⚔️ <b>${attacker.name}</b> применяет <i>${skill.icon} ${skill.name}</i> на <b>${target.name}</b> и наносит ${result.amount} урона!`);
         }
         playHitFx(target, { crit: result.crit, amount: result.amount });
-        if (skill.isUltimate) playUltimateFx(attacker, target);
+        if (skill.isUltimate) { playUltimateFx(attacker, target); toastUltimate(attacker, skill); }
 
         if (result.regen && target.hp > 0) {
             target.hp = Math.min(target.maxHp, target.hp + result.regen);
@@ -344,7 +358,7 @@ export function executeAction(attacker, target, skill, isDoubleCast = false) {
             log(`💚 <b>${attacker.name}</b> применяет <i>${skill.icon} ${skill.name}</i> на <b>${target.name}</b> и восстанавливает ${result.amount} ХП!`);
         }
         playHealFx(target, result.amount, { crit: result.critHeal });
-        if (skill.isUltimate) playUltimateFx(attacker, target);
+        if (skill.isUltimate) { playUltimateFx(attacker, target); toastUltimate(attacker, skill); }
     }
 
     if (!isDoubleCast && result.doubleCast && attacker.hp > 0 && target.hp > 0) {
@@ -393,7 +407,7 @@ function executeBuffOrDispelAction(attacker, skill, target) {
     // Ульта Святогора - единственная ульта типа "баф", и её фирменная анимация
     // раньше не проигрывалась вообще: playUltimateFx вызывался только в ветках
     // атаки/лечения и в aoe.
-    if (skill.isUltimate) playUltimateFx(attacker, targets[0] || attacker);
+    if (skill.isUltimate) { playUltimateFx(attacker, targets[0] || attacker); toastUltimate(attacker, skill); }
 
     if (skill.type === 'buff') {
         targets.forEach(t => {
@@ -401,11 +415,19 @@ function executeBuffOrDispelAction(attacker, skill, target) {
             playBuffFx(t, { positive: skill.buffTarget !== 'enemy' });
         });
     } else {
+        // Суммируем снятые эффекты по ВСЕМ целям и показываем одну подсказку,
+        // а не по одной на каждого — иначе массовый дизел (aoe) выдал бы сразу
+        // несколько всплывающих окон одновременно, что выглядело бы спамом.
+        let totalRemoved = 0;
         targets.forEach(t => {
             const removed = dispelBuffs(t);
             if (removed > 0) log(`✨ С <b>${t.name}</b> снято эффектов: ${removed}.`);
+            totalRemoved += removed;
             playBuffFx(t, { positive: true });
         });
+        if (totalRemoved > 0) {
+            showBattleToast(`✨ ${attacker.name}: снято эффектов — ${totalRemoved}`, 'buff');
+        }
     }
 
     restore();
@@ -440,6 +462,7 @@ function executeSummonAction(attacker, skill) {
         team.push(companion);
         state.currentTurnIndex = insertIntoQueue(state.turnQueue, companion, state.currentTurnIndex);
         log(`${skill.companion.icon} <b>${attacker.name}</b> призывает помощника: <b>${companion.name}</b> (${companion.maxHp} ХП) вступает в бой!`);
+        showBattleToast(`${skill.companion.icon} ${attacker.name} призвал: ${companion.name}!`, 'summon');
         playBuffFx(attacker, { positive: true });
         attacker.currentCooldowns[skill.name] = skill.cooldown;
     }
@@ -471,7 +494,7 @@ function executeDrainAction(attacker, skill, target) {
     log(`👻 <b>${attacker.name}</b> вытягивает душу из <b>${target.name}</b>: ${drained} урона, себе восстановлено ${restored} ХП.`);
     playHitFx(target, { crit: false, amount: drained });
     playHealFx(attacker, restored, {});
-    if (skill.isUltimate) playUltimateFx(attacker, target);
+    if (skill.isUltimate) { playUltimateFx(attacker, target); toastUltimate(attacker, skill); }
 
     if (target.hp <= 0) {
         log(`<span class="death-log">💀 ${target.name} погибает!</span>`);
@@ -499,7 +522,7 @@ function executeAoeAction(attacker, skill) {
         : (isPlayerSide ? state.playerTeam : state.enemyTeam).filter(c => c.hp > 0);
 
     log(`${skill.icon} <b>${attacker.name}</b> применяет <i>${skill.name}</i> по всей ${skill.type === 'attack' ? 'вражеской команде' : 'своей дружине'}!`);
-    if (skill.isUltimate) playUltimateFx(attacker, attacker);
+    if (skill.isUltimate) { playUltimateFx(attacker, attacker); toastUltimate(attacker, skill); }
 
     targets.forEach(target => {
         const result = resolveAction({ attacker, target, skill, arena: state.currentArena });
@@ -602,6 +625,7 @@ function cleanupCompanions() {
             if (!owner || owner.hp <= 0) {
                 unit.hp = 0;
                 log(`${unit.icon || '👥'} <b>${unit.name}</b> рассыпается — его хозяин пал.`);
+                showBattleToast(`${unit.icon || '👥'} ${unit.name} рассыпается — хозяин пал`, 'debuff');
             }
         });
     });

@@ -510,6 +510,54 @@ export function playBuffFx(target, { positive = true } = {}) {
     playCssFx(el, positive ? 'fx-buff-positive' : 'fx-buff-negative', 550);
 }
 
+// ---------------------------------------------------------------------------
+// Всплывающие подсказки по центру поля боя.
+//
+// Лог боя внизу экрана легко пропустить — по отзыву игроков, события вроде
+// "призвал помощника" или "оглушил" проходили незамеченными, а понимание
+// "откуда это вообще взялось" важно для тактики следующего хода. Обычный
+// урон/лечение/крит/уворот такой подсказки НЕ получают - для них уже есть
+// цифры и тряска прямо на карточке бойца (см. playHitFx и т.п. выше), а
+// дублирование их же текстом по центру экрана было бы просто спамом.
+// Сюда вынесены только события, у которых нет своего явного визуала:
+// призыв/гибель помощника, оглушение, ультимативное умение, снятие бафов.
+// ---------------------------------------------------------------------------
+const TOAST_LIFETIME_MS = 2600;
+const TOAST_MAX_ON_SCREEN = 3;
+
+export function showBattleToast(text, kind = 'info') {
+    const layer = document.getElementById('battle-toast-layer');
+    if (!layer) return;
+
+    const el = document.createElement('div');
+    el.className = `battle-toast battle-toast-${kind}`;
+    el.textContent = text;
+    layer.appendChild(el);
+
+    // Не даём подсказкам накапливаться, если события идут одна за другой
+    // быстрее, чем успевают истаять.
+    while (layer.children.length > TOAST_MAX_ON_SCREEN) layer.removeChild(layer.firstElementChild);
+
+    // Появление — через CSS @keyframes (см. style.css -> battle-toast-in-kf),
+    // а НЕ через requestAnimationFrame(() => classList.add(...)), как было
+    // раньше. rAF физически не вызывается, пока вкладка не в фокусе
+    // (document.hidden === true) - страница попросту не рисует кадры. В
+    // таком состоянии класс появления никогда не добавлялся, подсказка так
+    // и оставалась с opacity:0 весь свой срок жизни и исчезала невидимой.
+    // CSS-анимация запускается сама, как только элемент появился в DOM,
+    // без ожидания кадра отрисовки.
+    setTimeout(() => {
+        el.classList.add('battle-toast-hide'); // "растворяется как туман" - см. CSS
+        setTimeout(() => el.remove(), 600);
+    }, TOAST_LIFETIME_MS);
+}
+
+/** Очищает все ещё видимые подсказки — вызывается при старте нового боя. */
+export function clearBattleToasts() {
+    const layer = document.getElementById('battle-toast-layer');
+    if (layer) layer.innerHTML = '';
+}
+
 function hexToRgba(hex, alpha) {
     const clean = hex.replace('#', '');
     const bigint = parseInt(clean.length === 3
