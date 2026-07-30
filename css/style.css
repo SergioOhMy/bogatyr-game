@@ -502,7 +502,11 @@ body {
    ЧЁТКОЕ РАЗДЕЛЕНИЕ КОМАНД + ФОН АРЕНЫ (v1.02)
    ========================================================================= */
 
-.battlefield { position: relative; border-radius: 12px; padding: 15px; }
+/* position: relative раньше стояло здесь только ради .battle-toast-layer,
+   который был вложен прямо в .battlefield и центрировался поверх карточек.
+   Теперь слой подсказок переехал в .battle-status-row (ниже карточек), и
+   этому блоку отдельная точка привязки больше не нужна. */
+.battlefield { border-radius: 12px; padding: 15px; }
 .team { border-radius: 8px; padding: 6px; }
 .team.mine { border-left: 3px solid #2ecc71; }
 .team.enemy { border-left: 3px solid #e74c3c; }
@@ -570,7 +574,11 @@ body {
 }
 .surrender-btn:hover:not(:disabled) { opacity: 1; filter: brightness(1.1); }
 
-/* "Ходит: ..." переехало ПОД карточки и стало неброской строкой */
+/* "Ходит: ..." переехало ПОД карточки и стало неброской строкой. Обёртка
+   вокруг него - position:relative только затем, чтобы служить точкой
+   привязки для .battle-toast-layer (см. ниже): сама по себе она не должна
+   ничего сдвигать, её высоту по-прежнему задаёт только .turn-indicator. */
+.battle-status-row { position: relative; }
 .turn-indicator {
     font-size: 14px; color: #ecf0f1; margin: 8px 0 4px;
     text-shadow: 1px 1px 2px #000;
@@ -938,16 +946,26 @@ input[type="text"]:focus {
 .rules-body p { padding-left: 0; }
 
 /* =========================================================================
-   ВСПЛЫВАЮЩИЕ ПОДСКАЗКИ ПО ЦЕНТРУ ПОЛЯ БОЯ (v1.12)
+   ВСПЛЫВАЮЩИЕ ПОДСКАЗКИ О СОБЫТИЯХ БОЯ (v1.12, поправлено в v1.13)
    Показывают события, которых не видно через обычные цифры урона на
    карточке бойца: призыв/гибель помощника, оглушение, ультимативное умение,
    снятие бафов. Появляются и тают "как туман" - см. js/ui.js -> showBattleToast.
-   ========================================================================= */
+
+   Раньше слой был вложен прямо в .battlefield с inset:0 и центрировался
+   поверх ВСЕХ карточек - при активной игре это перекрывало имена/HP бойцов
+   как раз в момент, когда по ним нужно кликать, и мешало читать поле боя.
+   Теперь слой лежит в .battle-status-row (см. index.html) - в узком зазоре
+   между карточками и умениями, где раньше было только "Ходит: ...".
+   bottom: 100% относительно этого зазора ставит подсказку ТОЧНО над строкой
+   "Ходит", не перекрывая её текст, и растит стопку вверх, если подсказок
+   несколько сразу. Слой по-прежнему position: absolute, поэтому его
+   появление/исчезновение не меняет высоту .battle-status-row и НИЧЕГО
+   не сдвигает ни выше (карточки), ни ниже (умения, кнопка, лог). */
 .battle-toast-layer {
-    position: absolute; inset: 0; z-index: 15;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    position: absolute; left: 0; right: 0; bottom: 100%; margin-bottom: 4px;
+    z-index: 15;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
     pointer-events: none; /* не мешает кликам по бойцам под подсказкой */
-    padding: 10px;
 }
 /* Появление — через @keyframes, а не через transition + класс, добавляемый
    из JS следующим кадром. Анимация стартует сама, как только элемент

@@ -15,7 +15,7 @@
          фиксированного размера от высоты содержимого не зависит вообще. -->
     <div id="arena-backdrop" class="arena-backdrop"></div>
 
-    <div class="version-badge">v1.12</div>
+    <div class="version-badge">v1.13</div>
 
     <div class="title-wrap" id="title-wrap">
         <img src="assets/title_logo.png" alt="Битва Богатырей: Легенды Руси" class="game-title-img">
@@ -303,17 +303,22 @@
         </div>
 
         <div class="battlefield">
-            <!-- Всплывающие подсказки о событиях, которые не видны через
-                 обычные цифры урона/лечения на карточке: призыв помощника,
-                 его гибель, оглушение, ультимативное умение, снятие бафов.
-                 См. js/ui.js -> showBattleToast. pointer-events: none, чтобы
-                 не мешать кликам по бойцам под ней. -->
-            <div id="battle-toast-layer" class="battle-toast-layer"></div>
             <div id="player-team" class="team mine"></div>
             <div id="enemy-team" class="team enemy"></div>
         </div>
 
-        <div id="turn-indicator" class="turn-indicator">Ходит: ...</div>
+        <!-- Подсказки и "Ходит: ..." живут в одном компактном зазоре между
+             карточками и умениями, а не поверх карточек. Раньше подсказка
+             всплывала по центру всего поля боя и закрывала имена/HP бойцов
+             как раз в момент, когда по ним нужно было кликать - мешала
+             читать поле, а не помогала. Слой подсказок абсолютно
+             спозиционирован и растёт ВВЕРХ от этой строки (см. CSS), поэтому
+             появление/исчезновение подсказки не сдвигает ничего ниже - высоту
+             в потоке документа по-прежнему задаёт только .turn-indicator. -->
+        <div class="battle-status-row">
+            <div id="battle-toast-layer" class="battle-toast-layer"></div>
+            <div id="turn-indicator" class="turn-indicator">Ходит: ...</div>
+        </div>
 
         <div id="skills-container" class="skills"></div>
         <button id="execute-btn" disabled>Атаковать</button>
