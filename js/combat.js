@@ -31,6 +31,13 @@ function battleDelay(ms) {
     return state.autoBattleMode === 'fast' ? Math.round(ms / 2) : ms;
 }
 
+// ID таймера, запланированного текущим вызовом beginActionPhase (ход бота
+// или автобой игрока). Переключение режима автобоя ПРЯМО на ходу игрока
+// (см. setAutoBattleMode) вызывает beginActionPhase повторно за тот же ход -
+// без отмены предыдущего таймера сработали бы оба, и один и тот же ход
+// отыгрался бы дважды.
+let pendingTurnTimeout = null;
+
 /**
  * Включает картинку арены на фоновом слое (arenaId) или гасит её (null),
  * когда игрок уходит с экрана боя.
@@ -242,6 +249,7 @@ export function startTurn() {
  * применились один раз в startTurn() и не должны сработать дважды за один ход.
  */
 function beginActionPhase(activeChar) {
+    clearTimeout(pendingTurnTimeout);
     document.getElementById('turn-indicator').innerText = `Ходит: ${activeChar.name}`;
 
     const actionBtn = document.getElementById('execute-btn');
@@ -270,7 +278,7 @@ function beginActionPhase(activeChar) {
         // зависшая анимация), через 60 секунд срабатывал handleTurnTimeout и
         // поражение за "пропуск хода" засчитывалось игроку — за ход, которого
         // он не делал.
-        setTimeout(botLogic, battleDelay(1500));
+        pendingTurnTimeout = setTimeout(botLogic, battleDelay(1500));
         return;
     }
 
@@ -285,7 +293,7 @@ function beginActionPhase(activeChar) {
         actionBtn.disabled = true;
         actionBtn.innerText = `🤖 Автобой: ${activeChar.name}...`;
         actionBtn.style.background = '#7f8c8d';
-        setTimeout(autoPlayerLogic, battleDelay(1500));
+        pendingTurnTimeout = setTimeout(autoPlayerLogic, battleDelay(1500));
         return;
     }
 
@@ -352,6 +360,7 @@ function handleTurnTimeout(activeChar) {
         state.battleOver = true;
         setTimeout(() => {
             recordLoss();
+            finishBattle();
             alert('Поражение! Два пропущенных хода подряд — бой проигран автоматически.');
             showMenu(); // сундук выдаётся только за победу
         }, 600);
@@ -529,6 +538,12 @@ function executeSummonAction(attacker, skill) {
     document.getElementById('execute-btn').disabled = true;
     if (!attacker.isBot) state.playerSkipStreak = 0;
 
+    // Само умение призыва/лечения помощника не масштабируется dmgMult/healMult,
+    // но флаги временных модификаторов всё равно нужно погасить здесь -
+    // иначе, к примеру, пропуск хода одноразово "простит" следующее реальное
+    // действие вместо этого призыва, на который штраф не мог подействовать.
+    const { restore } = applyTemporaryBoosts(attacker);
+
     const team = state.playerTeam.includes(attacker) ? state.playerTeam : state.enemyTeam;
     const existing = findCompanion(team, attacker);
 
@@ -550,6 +565,7 @@ function executeSummonAction(attacker, skill) {
         attacker.currentCooldowns[skill.name] = skill.cooldown;
     }
 
+    restore();
     renderBattlefield(onTargetSelect);
     setTimeout(checkWinCondition, battleDelay(700));
 }

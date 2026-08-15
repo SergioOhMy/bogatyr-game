@@ -636,10 +636,6 @@ body {
 /* =========================================================================
    ПРОМОКОДЫ
    ========================================================================= */
-.promo-btn {
-    background: #8e44ad; font-size: 14px; padding: 8px 16px; margin-top: 10px;
-}
-.promo-btn:hover:not(:disabled) { background: #9b59b6; }
 .promo-modal-backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,0.6);
     display: flex; align-items: center; justify-content: center; z-index: 1000;
