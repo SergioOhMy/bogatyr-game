@@ -14,18 +14,18 @@ function neutralMods() {
 
 export const arenas = [
     {
-        id: 'field', name: 'Чистое поле', icon: '🌾', bgAsset: 'assets/arena_field.jpg',
+        id: 'field', name: 'Чистое поле', icon: '🌾',
         desc: 'Нейтральная арена без модификаторов — честный бой без сюрпризов.',
         ...neutralMods()
     },
     {
-        id: 'fog', name: 'Туманная низина', icon: '🌫️', bgAsset: 'assets/arena_fog.jpg',
+        id: 'fog', name: 'Туманная низина', icon: '🌫️',
         desc: 'Густой туман скрывает противника: все атаки получают +15% к шансу промаха.',
         ...neutralMods(),
         missChance: 0.15
     },
     {
-        id: 'swamp', name: 'Болото Бабы Яги', icon: '🐸', bgAsset: 'assets/arena_swamp.jpg',
+        id: 'swamp', name: 'Болото Бабы Яги', icon: '🐸',
         desc: 'Нежить исцеляется в трясине (+8% HP за ход), а живые понемногу вязнут и травятся испарениями (-2% HP за ход).',
         ...neutralMods(),
         turnStartEffect: (character) => {
@@ -39,13 +39,13 @@ export const arenas = [
         }
     },
     {
-        id: 'ice', name: 'Ледяное капище', icon: '❄️', bgAsset: 'assets/arena_ice.jpg',
+        id: 'ice', name: 'Ледяное капище', icon: '❄️',
         desc: 'Духи и нежить чувствуют себя как дома под защитой льда: получаемый ими урон снижен на 10%.',
         ...neutralMods(),
         incDmgMultForRace: (race) => (race === 'spirit' || race === 'undead') ? 0.9 : 1
     },
     {
-        id: 'lair', name: 'Логово Змея', icon: '🌋', bgAsset: 'assets/arena_lair.jpg',
+        id: 'lair', name: 'Логово Змея', icon: '🌋',
         desc: 'Родная стихия чудовищ: звери наносят +20% урона, а всех остальных понемногу опаляет жаром (-3% HP за ход).',
         ...neutralMods(),
         dmgMultForRace: (race) => race === 'beast' ? 1.2 : 1,
@@ -57,7 +57,7 @@ export const arenas = [
         }
     },
     {
-        id: 'storm', name: 'Грозовые небеса', icon: '⚡', bgAsset: 'assets/arena_storm.jpg',
+        id: 'storm', name: 'Грозовые небеса', icon: '⚡',
         desc: 'Молнии бьют по самым крупным целям: звери наносят +15% урона, но и получают +10% урона, а духи используют ветер и восстанавливают 4% HP за ход.',
         ...neutralMods(),
         dmgMultForRace: (race) => race === 'beast' ? 1.15 : 1,

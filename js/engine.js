@@ -142,7 +142,6 @@ export function applySkillDot(skill, target) {
 //   'evasive'     - дополнительный шанс уворота (0.9 = +90% к шансу)
 //   'blind'       - дополнительный шанс промаха СВОИХ атак (0.3 = +30%)
 //   'stun'        - пропускает следующий собственный ход целиком
-//   'companion'   - разовый "вызов" (скелет/медведь), см. combat.js
 // ---------------------------------------------------------------------------
 
 export function addBuff(character, buff) {
@@ -151,8 +150,7 @@ export function addBuff(character, buff) {
         stat: buff.stat,
         value: buff.value,
         turnsLeft: buff.turnsLeft ?? buff.turns ?? 1,
-        dispellable: buff.dispellable !== false,
-        meta: buff.meta
+        dispellable: buff.dispellable !== false
     });
 }
 

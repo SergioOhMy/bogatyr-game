@@ -201,20 +201,21 @@ describe('addBuff + tickBuffs (бафы/дебафы v1.03)', () => {
     it('dispelBuffs снимает только dispellable-эффекты', () => {
         const target = makeFighter();
         addBuff(target, { stat: 'defBuff', value: -0.2, turns: 2, dispellable: true });
-        addBuff(target, { stat: 'companion', value: 10, turns: 99, dispellable: false });
+        addBuff(target, { stat: 'dmgBuff', value: 0.1, turns: 99, dispellable: false });
         const removed = dispelBuffs(target);
         expect(removed).toBe(1);
         expect(target.buffs.length).toBe(1);
-        expect(target.buffs[0].stat).toBe('companion');
+        expect(target.buffs[0].stat).toBe('dmgBuff');
     });
 
-    it('companion-баф переживает несколько тиков (регрессия: спутник исчезал после одного хода)', () => {
+    it('долгий баф переживает несколько тиков и снимается ровно по истечении', () => {
         const owner = makeFighter();
-        addBuff(owner, { stat: 'companion', value: 18, turns: 99, meta: { icon: '💀', label: 'Скелет' } });
+        addBuff(owner, { stat: 'dmgBuff', value: 0.1, turns: 3 });
         tickBuffs(owner);
         tickBuffs(owner);
+        expect(hasBuff(owner, 'dmgBuff')).toBe(true);
         tickBuffs(owner);
-        expect(hasBuff(owner, 'companion')).toBe(true);
+        expect(hasBuff(owner, 'dmgBuff')).toBe(false);
     });
 });
 

@@ -1,9 +1,6 @@
 // characters.js — данные персонажей.
 //
 // Что добавлено к исходной версии:
-//  - passivesSystem: у каждой пассивки теперь есть `fx` — имя CSS-класса
-//    анимации, которая проигрывается при её срабатывании (см. css/style.css
-//    и js/ui.js -> playPassiveFx).
 //  - race: раса персонажа (human / undead / spirit / beast) — используется
 //    модификаторами арен (js/arenas.js).
 //  - У каждого героя в конце списка навыков — персональное "ультимативное"
@@ -31,12 +28,12 @@ import { getWeaponById, applyWeaponEffect } from './items.js';
 //  * 'vitality' с ×1.3 HP давал Лешему и Кощею запас, который не пробивался
 //    за отведённые ходы; снижено до ×1.25.
 export const passivesSystem = {
-    'luck':     { name: 'Удача 🍀',     desc: 'Ходит раньше. 12% шанс ударить дважды!',              initBonus: 50,  dmgMult: 1,    hpMult: 1,    healMult: 1,    incDmgMult: 1,    trigger: 'double_cast', chance: 0.12, fx: 'fx-doublecast' },
-    'heavy':    { name: 'Тяжеловес 🛡️', desc: 'Урон +20%. 10% шанс заблокировать атаку!',            initBonus: -30, dmgMult: 1.2,  hpMult: 1,    healMult: 1,    incDmgMult: 1,    trigger: 'block',       chance: 0.10, fx: 'fx-block' },
-    'vitality': { name: 'Живучесть ❤️', desc: 'Здоровье +25%. 10% шанс регенерации при ударе!',      initBonus: -10, dmgMult: 1,    hpMult: 1.25, healMult: 1,    incDmgMult: 1,    trigger: 'regen',       chance: 0.10, fx: 'fx-regen' },
-    'swift':    { name: 'Ловкость 💨',  desc: 'Инициатива +30. 16% шанс увернуться от атаки!',       initBonus: 30,  dmgMult: 1,    hpMult: 0.92, healMult: 1,    incDmgMult: 1,    trigger: 'dodge',       chance: 0.16, fx: 'fx-dodge' },
-    'berserk':  { name: 'Берсерк 💢',   desc: 'Урон +22%, получает урон +22%. 15% шанс крит. удара!', initBonus: 0,   dmgMult: 1.22, hpMult: 1,    healMult: 1,    incDmgMult: 1.22, trigger: 'crit',        chance: 0.15, fx: 'fx-crit' },
-    'healer':   { name: 'Знахарь 🧪',   desc: 'Лечение +45%. 15% шанс критического исцеления!',      initBonus: 0,   dmgMult: 0.9,  hpMult: 1,    healMult: 1.45, incDmgMult: 1,    trigger: 'crit_heal',   chance: 0.15, fx: 'fx-critheal' }
+    'luck':     { name: 'Удача 🍀',     desc: 'Ходит раньше. 12% шанс ударить дважды!',              initBonus: 50,  dmgMult: 1,    hpMult: 1,    healMult: 1,    incDmgMult: 1,    trigger: 'double_cast', chance: 0.12 },
+    'heavy':    { name: 'Тяжеловес 🛡️', desc: 'Урон +20%. 10% шанс заблокировать атаку!',            initBonus: -30, dmgMult: 1.2,  hpMult: 1,    healMult: 1,    incDmgMult: 1,    trigger: 'block',       chance: 0.10 },
+    'vitality': { name: 'Живучесть ❤️', desc: 'Здоровье +25%. 10% шанс регенерации при ударе!',      initBonus: -10, dmgMult: 1,    hpMult: 1.25, healMult: 1,    incDmgMult: 1,    trigger: 'regen',       chance: 0.10 },
+    'swift':    { name: 'Ловкость 💨',  desc: 'Инициатива +30. 16% шанс увернуться от атаки!',       initBonus: 30,  dmgMult: 1,    hpMult: 0.92, healMult: 1,    incDmgMult: 1,    trigger: 'dodge',       chance: 0.16 },
+    'berserk':  { name: 'Берсерк 💢',   desc: 'Урон +22%, получает урон +22%. 15% шанс крит. удара!', initBonus: 0,   dmgMult: 1.22, hpMult: 1,    healMult: 1,    incDmgMult: 1.22, trigger: 'crit',        chance: 0.15 },
+    'healer':   { name: 'Знахарь 🧪',   desc: 'Лечение +45%. 15% шанс критического исцеления!',      initBonus: 0,   dmgMult: 0.9,  hpMult: 1,    healMult: 1.45, incDmgMult: 1,    trigger: 'crit_heal',   chance: 0.15 }
 };
 
 export const baseCharacters = [
@@ -183,7 +180,6 @@ export function createCompanion(owner, companionData) {
         name: companionData.label,
         img: companionData.img || owner.img,
         icon: companionData.icon,
-        color: companionData.color,
 
         isCompanion: true,
         ownerId: owner.id,
@@ -200,10 +196,8 @@ export function createCompanion(owner, companionData) {
         healMult: 1,
         incDmgMult: 1,
         passiveName: `Помощник · ${owner.name}`,
-        passiveDesc: `Призван героем ${owner.name}. Гибнет вместе с ним.`,
         passiveTrigger: null,
         passiveChance: 0,
-        passiveFx: null,
 
         skills: [
             { name: `Удар (${companionData.label})`, icon: companionData.icon, dmg: companionData.dmg, type: 'attack', cooldown: 0, unlockTurn: 1 }
@@ -251,11 +245,8 @@ export function initHeroStats(char, isBot, weaponId = null) {
     hero.healMult = p.healMult;
     hero.incDmgMult = p.incDmgMult;
     hero.passiveName = p.name;
-    hero.passiveDesc = p.desc;
-
     hero.passiveTrigger = p.trigger;
     hero.passiveChance = p.chance;
-    hero.passiveFx = p.fx;
 
     if (weaponId) {
         const weapon = getWeaponById(weaponId);

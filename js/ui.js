@@ -219,7 +219,7 @@ export function renderSkills(char, onSkillSelect) {
         }
 
         btn.innerHTML = innerHtml;
-        if (!char.isBot && !autoPlaying && !isLocked && cdLeft === 0) btn.onclick = () => onSkillSelect(skill, btn);
+        if (!char.isBot && !autoPlaying && !isLocked && cdLeft === 0) btn.onclick = () => onSkillSelect(skill);
         container.appendChild(btn);
     });
 }

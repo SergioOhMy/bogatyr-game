@@ -116,7 +116,7 @@ export function onTargetSelect(char) {
     let activeChar = state.turnQueue[state.currentTurnIndex];
     // Во время автобоя ходом игрока распоряжается ИИ (см. autoPlayerLogic) -
     // ручные клики по бойцам в этот момент ни на что не должны влиять.
-    if (activeChar.isBot || state.autoBattleMode !== 'off' || char.hp <= 0) return;
+    if (activeChar.isBot || state.autoBattleMode !== 'off' || state.actionLocked || char.hp <= 0) return;
 
     const skill = state.selectedSkill;
     if (!skill) {
@@ -142,6 +142,7 @@ export function onTargetSelect(char) {
 }
 
 export function onSkillSelect(skill) {
+    if (state.actionLocked) return;
     state.selectedSkill = skill;
 
     if (skill.type === 'summon' || (skill.type === 'buff' && skill.buffTarget === 'self') || isSelfHeal(skill)) {
@@ -179,6 +180,7 @@ export function onSkillSelect(skill) {
 
 export function startTurn() {
     if (state.battleOver) return; // бой уже закончен - новых ходов не начинаем
+    state.actionLocked = false;
     clearInterval(state.timerInterval);
     state.selectedSkill = null;
     state.selectedTarget = null;
@@ -322,7 +324,8 @@ export function setAutoBattleMode(mode) {
     state.autoBattleMode = mode;
     if (state.battleOver) return;
     const activeChar = state.turnQueue[state.currentTurnIndex];
-    if (!activeChar || activeChar.hp <= 0 || activeChar.isBot) return;
+    // actionLocked: действие уже идёт - новый режим подхватит следующий ход.
+    if (!activeChar || activeChar.hp <= 0 || activeChar.isBot || state.actionLocked) return;
     beginActionPhase(activeChar);
 }
 
@@ -372,7 +375,23 @@ function handleTurnTimeout(activeChar) {
     nextTurn();
 }
 
+// Общий пролог любого действия. С этого момента и до следующего startTurn
+// ход считается сделанным (actionLocked).
+function beginAction(attacker, skill) {
+    state.actionLocked = true;
+    clearInterval(state.timerInterval);
+    document.getElementById('execute-btn').disabled = true;
+    attacker.currentCooldowns[skill.name] = skill.cooldown;
+    if (!attacker.isBot) state.playerSkipStreak = 0;
+}
+
 export function executeAction(attacker, target, skill, isDoubleCast = false) {
+    if (state.battleOver) return;
+    if (!isDoubleCast) {
+        if (state.actionLocked) return;
+        beginAction(attacker, skill);
+    }
+
     // У самолечения цели нет — из интерфейса сюда приходит заглушка {self:true},
     // поэтому подставляем самого применяющего до всех остальных веток.
     if (isSelfHeal(skill)) target = attacker;
@@ -392,13 +411,6 @@ export function executeAction(attacker, target, skill, isDoubleCast = false) {
     if (skill.aoe) {
         executeAoeAction(attacker, skill);
         return;
-    }
-
-    if (!isDoubleCast) {
-        clearInterval(state.timerInterval);
-        document.getElementById('execute-btn').disabled = true;
-        attacker.currentCooldowns[skill.name] = skill.cooldown;
-        if (!attacker.isBot) state.playerSkipStreak = 0;
     }
 
     const { restore } = applyTemporaryBoosts(attacker);
@@ -470,11 +482,6 @@ export function executeAction(attacker, target, skill, isDoubleCast = false) {
 // и массовые варианты (skill.aoe) - какая команда получает эффект, зависит
 // от buffTarget/dispelTarget и от того, на чьей стороне сам применяющий.
 function executeBuffOrDispelAction(attacker, skill, target) {
-    clearInterval(state.timerInterval);
-    document.getElementById('execute-btn').disabled = true;
-    attacker.currentCooldowns[skill.name] = skill.cooldown;
-    if (!attacker.isBot) state.playerSkipStreak = 0;
-
     const { restore } = applyTemporaryBoosts(attacker);
     const isPlayerSide = state.playerTeam.includes(attacker);
 
@@ -534,10 +541,6 @@ function executeBuffOrDispelAction(attacker, skill, target) {
 // createCompanion). Пока он жив, та же кнопка становится "Лечить <помощника>"
 // и лечит именно ЕГО, а не хозяина, причём без отката — так и просили.
 function executeSummonAction(attacker, skill) {
-    clearInterval(state.timerInterval);
-    document.getElementById('execute-btn').disabled = true;
-    if (!attacker.isBot) state.playerSkipStreak = 0;
-
     // Само умение призыва/лечения помощника не масштабируется dmgMult/healMult,
     // но флаги временных модификаторов всё равно нужно погасить здесь -
     // иначе, к примеру, пропуск хода одноразово "простит" следующее реальное
@@ -562,7 +565,6 @@ function executeSummonAction(attacker, skill) {
         log(`${skill.companion.icon} <b>${attacker.name}</b> призывает помощника: <b>${companion.name}</b> (${companion.maxHp} ХП) вступает в бой!`);
         showBattleToast(`${skill.companion.icon} ${attacker.name} призвал: ${companion.name}!`, 'summon');
         playBuffFx(attacker, { positive: true });
-        attacker.currentCooldowns[skill.name] = skill.cooldown;
     }
 
     restore();
@@ -575,11 +577,6 @@ function executeSummonAction(attacker, skill) {
 // союзнику. Раньше это было обычное лечение, которым Кощей мог подлатать
 // кого угодно, что не соответствовало ни названию, ни задумке умения.
 function executeDrainAction(attacker, skill, target) {
-    clearInterval(state.timerInterval);
-    document.getElementById('execute-btn').disabled = true;
-    attacker.currentCooldowns[skill.name] = skill.cooldown;
-    if (!attacker.isBot) state.playerSkipStreak = 0;
-
     const { restore } = applyTemporaryBoosts(attacker);
     const raw = computeAttackDamage(skill, attacker, target, state.currentArena);
     restore();
@@ -608,11 +605,6 @@ function executeDrainAction(attacker, skill, target) {
 // команду разом. Используется как ультимативным умением (Жар-птица,
 // Берегиня), так и потенциально любым будущим навыком с этим флагом.
 function executeAoeAction(attacker, skill) {
-    clearInterval(state.timerInterval);
-    document.getElementById('execute-btn').disabled = true;
-    attacker.currentCooldowns[skill.name] = skill.cooldown;
-    if (!attacker.isBot) state.playerSkipStreak = 0;
-
     const { restore } = applyTemporaryBoosts(attacker);
 
     const isPlayerSide = state.playerTeam.includes(attacker);
@@ -634,6 +626,11 @@ function executeAoeAction(attacker, skill) {
             target.hp = Math.max(0, target.hp - result.amount);
             log(`⚔️ <b>${target.name}</b> получает ${result.amount} урона.`);
             playHitFx(target, { crit: result.crit, amount: result.amount });
+            if (result.regen && target.hp > 0) {
+                target.hp = Math.min(target.maxHp, target.hp + result.regen);
+                log(`❤️ Живучесть спасает! <b>${target.name}</b> регенерирует ${result.regen} ХП в ответ на удар!`);
+                playRegenFx(target, result.regen);
+            }
             if (target.hp <= 0) {
                 target.hp = 0;
                 log(`<span class="death-log">💀 ${target.name} погибает!</span>`);
@@ -687,7 +684,9 @@ function botLogic() {
     const allies = isPlayerSideBot ? state.playerTeam : state.enemyTeam;
     const enemies = isPlayerSideBot ? state.enemyTeam : state.playerTeam;
 
-    const action = chooseBotAction(activeChar, allies, enemies, state.currentArena, state.difficulty);
+    // Сложность — про силу противника; свой помощник игрока играет в полную силу.
+    const difficulty = isPlayerSideBot ? 'hard' : state.difficulty;
+    const action = chooseBotAction(activeChar, allies, enemies, state.currentArena, difficulty);
     if (!action) {
         log(`⏳ <b>${activeChar.name}</b> восстанавливает силы (нет доступных навыков).`);
         nextTurn();

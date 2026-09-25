@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('btn-create').onclick = () => {
-        const name = document.getElementById('input-name').value || 'Богатырь';
+        const name = document.getElementById('input-name').value.trim() || 'Богатырь';
         createProfile(name, selectedForStart, selectedAvatar);
         document.getElementById('input-name').value = '';
         showMenu();
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-chest-open').onclick = () => openPostBattleChest();
     document.getElementById('btn-chest-continue').onclick = () => {
         document.getElementById('chest-modal-backdrop').style.display = 'none';
-        if (window.__afterChestCallback) { window.__afterChestCallback(); window.__afterChestCallback = null; }
+        runAfterChest();
     };
 
     // Промокод
@@ -744,13 +744,21 @@ const EPIC_CHEST_PRICE = 1000;
 /** Шанс, что сундук за победу окажется эпическим (с выбором оружия вручную). */
 const EPIC_CHEST_CHANCE = 0.05;
 
+let afterChestCallback = null;
+
+function runAfterChest() {
+    const cb = afterChestCallback;
+    afterChestCallback = null;
+    if (cb) cb();
+}
+
 function openPostBattleChest() {
     // 5% на эпический сундук: вместо случайного оружия игрок выбирает сам.
-    if (Math.random() < EPIC_CHEST_CHANCE) {
+    // При полном инвентаре эпик не выпадает: из него нечего взять, а обычный
+    // сундук в этом случае хотя бы выдаст монеты.
+    if (!isInventoryFull() && Math.random() < EPIC_CHEST_CHANCE) {
         document.getElementById('chest-modal-backdrop').style.display = 'none';
-        openEpicChest(() => {
-            if (window.__afterChestCallback) { window.__afterChestCallback(); window.__afterChestCallback = null; }
-        });
+        openEpicChest(runAfterChest);
         return;
     }
 
@@ -849,7 +857,7 @@ export function showPostBattleChest(onDone) {
     document.getElementById('chest-stage-closed').style.display = 'block';
     document.getElementById('chest-stage-result').style.display = 'none';
     document.getElementById('chest-modal-backdrop').style.display = 'flex';
-    window.__afterChestCallback = onDone;
+    afterChestCallback = onDone;
 }
 
 // --------------------------- Промокод ---------------------------
