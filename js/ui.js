@@ -27,13 +27,22 @@ export function renderBattlefield(onTargetSelect) {
     const pDiv = document.getElementById('player-team');
     const eDiv = document.getElementById('enemy-team');
 
-    // Убираем элементы бойцов, которых больше нет в текущем составе команд -
-    // актуально при старте нового боя, т.к. теперь (см. ниже) существующие
-    // элементы переиспользуются, а не сносятся на каждый рендер.
-    const currentIds = new Set([...state.playerTeam, ...state.enemyTeam].map(c => c.id));
-    [pDiv, eDiv].forEach(container => {
+    // Убираем элементы бойцов, которых больше нет в текущем составе КОНКРЕТНО
+    // ЭТОЙ команды - актуально при старте нового боя, т.к. теперь (см. ниже)
+    // существующие элементы переиспользуются, а не сносятся на каждый рендер.
+    //
+    // ВАЖНО: раньше здесь была одна общая проверка на объединении id ОБЕИХ
+    // команд сразу. Из-за этого герой, побывавший в дружине игрока в одном
+    // бою, а затем случайно выпавший боту в следующем (тот же id!), не
+    // удалялся из #player-team - его id всё ещё "числился" в объединении
+    // через enemyTeam. Карточка оставалась висеть в чужом контейнере
+    // замороженной на последнем состоянии, а рядом в #enemy-team рисовалась
+    // ВТОРАЯ, настоящая карточка того же героя - на экране одновременно два
+    // "Алёши Поповича", один из них призрак.
+    [[pDiv, state.playerTeam], [eDiv, state.enemyTeam]].forEach(([container, team]) => {
+        const ids = new Set(team.map(c => c.id));
         Array.from(container.querySelectorAll('.fighter')).forEach(child => {
-            if (!currentIds.has(child.dataset.charId)) child.remove();
+            if (!ids.has(child.dataset.charId)) child.remove();
         });
     });
 
